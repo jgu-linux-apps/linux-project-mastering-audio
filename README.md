@@ -157,6 +157,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.5.4** – new dark-mode app icon in the series style: the app's own symbol on a deep navy tile, the same as the other apps of the series.
 - **0.5.2** – new **Aurora** theme (menu → Theme): pastel glass in light mode, an aurora glow on deep navy in dark mode; unlike the other themes it follows the system light/dark setting by itself. Chart bars and A/B meters use its cyan → violet → pink gradient.
 - **0.5.1** – Vocals: new **AUTO-TUNE** option – hard pitch correction to the nearest semitone (own TD-PSOLA engine,
   no extra libraries); the **MANUAL** tile moved to the end. New **Studio Pro (ergonomic)** theme. README in English only.
