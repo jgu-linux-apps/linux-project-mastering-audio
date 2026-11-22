@@ -41,7 +41,11 @@ It is not another Audacity – just what you need. The interface is available in
    **Tone (EQ)** – low cut, body 200 Hz, mud 350 Hz, presence 3.5 kHz, air 12 kHz; **Compression** – threshold, ratio,
    attack, release; **De-esser & saturation**; **Space** – reverb, pre-delay, echo and echo repeats. Changes are heard
    about a second after you release a slider, and the settings are remembered.
-3. For every track: **Volume** (−24…+12 dB), **Reverb / echo** (0–100%; 0 = off), **Mute** (muted tracks are left out).
+3. For every track: **Volume** (−24…+12 dB), **Reverb / echo** (0–100%; 0 = off), **Offset** (−2000…+2000 ms – shift a
+   stem that does not start exactly with the others; + later, − earlier), **Mute** (muted tracks are left out).
+   **Backing track (instrumental)** – a card above the vocal tracks: load the music and hear the vocals against it.
+   It plays unprocessed, levelled to about 2 dB above the vocals, with its own **volume**, **offset** and **mute**; it is
+   for listening only unless you switch on **Include the backing track in the merged file**.
 4. **Live listening** (bar at the bottom): sliders work during playback, the meter shows the peak of the sum and warns
    when it is too loud. Seeking is safe: the jump happens when the slider stops, and if playback ever stalls the
    player rebuilds itself at the same position.
@@ -82,11 +86,18 @@ Two equal columns – tracks and the chart on the left, settings on the right �
    encoder) – with PNG cover art and tags (title from the file name, artist, album, track number).
 7. **NORMALIZE** → a **`normalized/`** folder next to the originals + a report (before/after, chorus level, LRA and how
    many dB the limiter cut). If the limiter cut more than 3 dB on a track, the app warns you – the master may sound flat.
-8. **A/B listening** (after normalizing or with a preview): pick a track and switch **A · original** / **B · after**
+8. **Reference track** – load a song that sounds the way you want: the app compares the album with it (loudness, LRA,
+   peak, bass / mids / highs), draws both average 1/3-octave spectra, explains the differences and suggests a correction:
+   **Use the reference level** (sets a custom target) and a suggested **mastering** style.
+9. **Whole album in one file + CUE** (Output): one extra WAV with a CUE sheet, with a **gap** between tracks (silence,
+   marked as pregap) or a **crossfade** (equal-power).
+10. **A/B listening** (after normalizing or with a preview): pick a track and switch **A · original** / **B · after**
    while it plays. Both versions play at **the same loudness** (the louder one is turned down), so you hear only the
    difference in sound – no "louder = better" illusion. Below the player: precise **EBU R128** readings for A and B
    at once – **momentary** (400 ms), **short-term** (3 s) and **integrated** – refreshed every 100 ms, plus **two meters
-   side by side** in the style of the current theme (the heard version is highlighted). Changing the mastering,
+   side by side** in the style of the current theme (the heard version is highlighted), a live **1/3-octave spectrum
+   analyzer** of both versions with the average tone change (bass / mids / highs), and **B as streamed** – version B
+   after AAC 256, Opus 160, Ogg Vorbis 320 or MP3 128 encoding and decoding, with the peak after the codec. Changing the mastering,
    target, method or track list stops an outdated A/B with a hint; going back to the last settings restores it.
 
 Without mix mastering the sound does not change: only gain + peak protection (soft clipper and true-peak limiter).
@@ -111,6 +122,13 @@ The terminal button in the title bar (top right) opens a small window that shows
 loading and measurements (LUFS, true peak), every vocal processing step (filter, EQ, de-esser, compression, reverb,
 echo), the GStreamer mixer, gain and limiter iterations during normalization, peak checks after MP3/MP4 encoding and
 file writes. It is hidden at start-up and opens only when you click the icon.
+
+## Projects
+
+Menu (☰) → **Open project…** (Ctrl+O) / **Save project** (Ctrl+S) – a `.pmaproj` file keeps both tabs: vocal tracks with
+their options, volumes, effects and offsets, the backing track, MANUAL sliders, album tracks, mastering, target, method,
+output settings, cover, reference and codec. Missing files are listed and skipped. A project can also be opened from
+the command line.
 
 ## Other
 
@@ -157,6 +175,10 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.6.0** – Vocals: **backing track** (instrumental) on top of the vocal tracks – listening only or in the merged
+  file, with volume, offset and mute; **per-track offset** in milliseconds. Album: **reference track** with comparison
+  and suggested correction, live **spectrum analyzer** in A/B, **B as streamed** (AAC / Opus / Vorbis / MP3 preview),
+  **whole album in one file + CUE** with gaps or crossfade. **Save / open project** (`.pmaproj`).
 - **0.5.4** – new dark-mode app icon in the series style: the app's own symbol on a deep navy tile, the same as the other apps of the series.
 - **0.5.2** – new **Aurora** theme (menu → Theme): pastel glass in light mode, an aurora glow on deep navy in dark mode; unlike the other themes it follows the system light/dark setting by itself. Chart bars and A/B meters use its cyan → violet → pink gradient.
 - **0.5.1** – Vocals: new **AUTO-TUNE** option – hard pitch correction to the nearest semitone (own TD-PSOLA engine,

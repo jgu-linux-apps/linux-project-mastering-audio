@@ -55,6 +55,15 @@ def normalize_album(ex, infos, target, mode, out_dir, formats, wav_quality, cove
     return results
 
 
+def album_single_file(results, out_dir, gap_s, xfade_s, quality, meta, ceil, name):
+    """Cały album w jednym pliku WAV + CUE z gotowych (znormalizowanych) plików."""
+    from .analysis import album_image
+    paths = [(r["files"].get("wav") or r["files"].get("mp4") or r["files"].get("mp3"))["path"] for r in results]
+    titles = [clean_title(r["info"].path) for r in results]
+    safe = re.sub(r'[\\/:*?"<>|]+', "_", name).strip() or "album"
+    return album_image(paths, titles, os.path.join(out_dir, safe + ".wav"), gap_s, xfade_s, quality, meta, ceil)
+
+
 def squashed(results):
     """Numery utworów (od 1), w których limiter ściął szczyty o więcej niż N.SQUASH_WARN_DB."""
     return [n for n, r in enumerate(results, 1) if r["stats"]["limited"] > N.SQUASH_WARN_DB]
@@ -100,8 +109,11 @@ def loudness_curves(path):
         x, fs = _decode(path), 44100
     mom = dsp._lufs_from_power(dsp._block_powers(x, fs, 0.4, 0.1))
     st = dsp.short_term(x, fs, 0.1)
+    from .analysis import average_spectrum, band_frames
+    bands = band_frames(x, fs, 0.1, 0.4)           # widmo 1/3 oktawy co 100 ms – analizator w A/B
     return dict(momentary=mom.astype("float32"), short=st.astype("float32"),
-                integrated=dsp.integrated_lufs(x, fs), hop=0.1)
+                integrated=dsp.integrated_lufs(x, fs), hop=0.1, bands=bands,
+                avg_spectrum=average_spectrum(bands).astype("float32"))
 
 
 # ------------------------------------------------------------------ próbka masteringu (zakładka Album)

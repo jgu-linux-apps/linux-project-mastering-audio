@@ -377,15 +377,83 @@ def render_track(path, preset_key, fs_target, manual=None):
     return dry_p, wet_p, len(dry) / fs
 
 
+BACKING_LUFS = -18.0    # podkład: ok. 2 dB głośniej niż przetworzony wokal (−20 LUFS) – suwak 0 dB = ten poziom
+
+
+def _ensure_stereo(x):
+    x = as2d_f32(x)
+    return np.repeat(x, 2, axis=1) if x.shape[1] == 1 else x[:, :2]
+
+
+def prepare_backing(path, fs_target):
+    """Podkład (instrumental) do odsłuchu i opcjonalnie do miksu: stereo, częstotliwość wokali,
+    poziom BACKING_LUFS – bez żadnej innej obróbki. Zwraca (plik.wav, sekundy)."""
+    from .common import load, to_rate
+    key = hashlib.sha1(f"{path}|{os.path.getmtime(path)}|{fs_target}|{BACKING_LUFS}|backing-v1".encode()).hexdigest()[:16]
+    d = os.path.join(CACHE, key)
+    out = os.path.join(d, "backing.wav")
+    if os.path.exists(out):
+        L.log(f"podkład {os.path.basename(path)} z cache", tag="vocal")
+        return out, sf.info(out).duration
+    os.makedirs(d, exist_ok=True)
+    try:
+        x, fs = load(path)
+    except Exception:  # noqa: BLE001  (MP3 / MP4 – przez ffmpeg)
+        from .export import _decode
+        x, fs = _decode(path), 44100
+    x = _ensure_stereo(to_rate(x, fs, fs_target))
+    lufs = dsp.integrated_lufs(x, fs_target)
+    g = BACKING_LUFS - lufs if lufs > -70 else 0.0
+    x = (x * dsp.undb(g)).astype(np.float32)
+    sf.write(out + ".tmp.wav", x, fs_target, subtype="FLOAT")
+    os.replace(out + ".tmp.wav", out)
+    L.log(f"podkład {os.path.basename(path)}: {len(x) / fs_target:.1f} s, {lufs:.1f} LUFS -> {BACKING_LUFS:.0f} LUFS "
+          f"({g:+.1f} dB)", "ok", tag="vocal")
+    return out, len(x) / fs_target
+
+
+def shift_file(path, offset_ms):
+    """Kopia pliku przesunięta w czasie: offset > 0 – cisza na początku (ścieżka później),
+    offset < 0 – ucięty początek (ścieżka wcześniej). 0 -> ten sam plik."""
+    if not path or abs(offset_ms) < 0.5:
+        return path
+    key = hashlib.sha1(f"{path}|{os.path.getmtime(path)}|{offset_ms:.1f}|shift-v1".encode()).hexdigest()[:16]
+    out = os.path.join(os.path.dirname(path), f"shift_{key}.wav")
+    if os.path.exists(out):
+        return out
+    x, fs = sf.read(path, dtype="float32", always_2d=True)
+    n = int(round(abs(offset_ms) / 1000 * fs))
+    if offset_ms > 0:
+        y = np.concatenate([np.zeros((n, x.shape[1]), np.float32), x])
+    else:
+        y = x[min(n, len(x) - 1):]
+    sf.write(out + ".tmp.wav", y, fs, subtype="FLOAT")
+    os.replace(out + ".tmp.wav", out)
+    return out
+
+
+def shift_pair(dry, wet, offset_ms, name=""):
+    r = shift_file(dry, offset_ms), shift_file(wet, offset_ms)
+    L.log(f"{name}: przesunięcie {offset_ms:+.0f} ms", tag="vocal")
+    return r
+
+
 def merge(tracks, out_path, fs):
-    """tracks: lista dict(dry, wet, volume_db, fx). Sumuje dokładnie tak jak odsłuch na żywo,
-    potem zabezpiecza szczyty (limiter true-peak -1 dBTP tylko gdy potrzeba). WAV 24 bit."""
+    """tracks: lista dict(dry, wet, volume_db, fx) – wet może być None (podkład). Sumuje dokładnie tak jak
+    odsłuch na żywo, potem zabezpiecza szczyty (limiter true-peak -1 dBTP tylko gdy potrzeba). WAV 24 bit."""
     parts = []
     for t in tracks:
         dry, _ = sf.read(t["dry"], dtype="float32", always_2d=True)
-        wet, _ = sf.read(t["wet"], dtype="float32", always_2d=True)
         v = dsp.undb(t["volume_db"])
-        parts.append(dry * v + wet * (v * fx_gain(t["fx"])))
+        if t.get("wet"):
+            wet, _ = sf.read(t["wet"], dtype="float32", always_2d=True)
+            n = max(len(dry), len(wet))
+            p = np.zeros((n, 2), np.float32)
+            p[:len(dry)] += _ensure_stereo(dry) * v
+            p[:len(wet)] += _ensure_stereo(wet) * (v * fx_gain(t["fx"]))
+            parts.append(p)
+        else:
+            parts.append(_ensure_stereo(dry) * v)
     n = max(len(p) for p in parts)
     mix = np.zeros((n, 2), dtype=np.float32)
     for p in parts:

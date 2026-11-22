@@ -46,11 +46,15 @@ class App(Adw.Application):
         theme = Gio.SimpleAction.new_stateful("theme", GLib.VariantType.new("s"), GLib.Variant("s", themes.CURRENT))
         theme.connect("activate", self._on_theme)
         self.add_action(theme)
-        for name, cb in (("about", self._on_about), ("quit", lambda *_: self.really_quit())):
+        for name, cb in (("about", self._on_about), ("quit", lambda *_: self.really_quit()),
+                         ("project-open", lambda *_: self.win and self.win.open_project()),
+                         ("project-save", lambda *_: self.win and self.win.save_project(self.win.project_path))):
             a = Gio.SimpleAction.new(name, None)
             a.connect("activate", cb)
             self.add_action(a)
         self.set_accels_for_action("app.quit", ["<Control>q"])
+        self.set_accels_for_action("app.project-open", ["<Control>o"])
+        self.set_accels_for_action("app.project-save", ["<Control>s"])
         self._sync_icon()
 
     def do_activate(self):

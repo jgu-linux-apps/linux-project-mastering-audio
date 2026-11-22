@@ -11,6 +11,7 @@ gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from .. import i18n  # noqa: E402
+from ..engine import analysis as AN  # noqa: E402
 from ..engine import jobs  # noqa: E402
 from ..engine import master as M  # noqa: E402
 from ..engine import normalize as N  # noqa: E402
@@ -19,6 +20,7 @@ from . import common as C  # noqa: E402
 from .ab_meter import ABMeter  # noqa: E402
 from .abplayer import ABPlayer  # noqa: E402
 from .album_chart import AlbumChart  # noqa: E402
+from .spectrum import SpectrumView  # noqa: E402
 from .. import log as L  # noqa: E402
 
 
@@ -47,6 +49,12 @@ class AlbumPage(Gtk.Box):
         self.ab = ABPlayer(on_state=self._ab_sync, on_level=self._ab_peak)
         self._curves = {}          # ścieżka -> krzywe głośności (liczone raz w procesie roboczym)
         self._ab_cur = None        # (krzywe A, krzywe B, gain A dB, gain B dB) bieżącego utworu
+        self._ab_base = None       # (A, B, LUFS A, LUFS B) przed ewentualnym „odsłuchem po kodeku”
+        self._codec_tok = 0
+        self.reference = None      # pomiar utworu referencyjnego (dict z analysis.analyze_reference)
+        self.ref_path = None
+        self._spectra = {}         # ścieżka -> średnie widmo utworu (do porównania z referencją)
+        self._ref_tok = 0
 
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, vexpand=True)
         self.stack.add_named(C.empty_page(tr("a_drop_title"), tr("a_drop_sub"), self.choose_files), "empty")
@@ -154,6 +162,7 @@ class AlbumPage(Gtk.Box):
         ng.add(self.manual_row)
         ng.add(self.mode_row)
         right.append(ng)
+        right.append(self._ref_group())
 
         o = Adw.PreferencesGroup(title=tr("output"))
         self.wavq_row = Adw.ComboRow(title=tr("wav_quality"),
@@ -185,6 +194,22 @@ class AlbumPage(Gtk.Box):
         self.cover_row.add_suffix(self.cover_rm)
         self.cover_row.connect("activated", lambda *_: self.choose_cover())
         o.add(self.cover_row)
+        self.one_file_row = Adw.SwitchRow(title=tr("one_file"), subtitle=tr("one_file_sub"))
+        o.add(self.one_file_row)
+        self.gap_row = Adw.SpinRow.new_with_range(0, 10, 0.5)
+        self.gap_row.set_title(tr("gap"))
+        self.gap_row.set_subtitle(tr("gap_sub"))
+        self.gap_row.set_digits(1)
+        self.gap_row.set_value(2.0)
+        self.xfade_row = Adw.SpinRow.new_with_range(0, 12, 0.5)
+        self.xfade_row.set_title(tr("xfade"))
+        self.xfade_row.set_subtitle(tr("xfade_sub"))
+        self.xfade_row.set_digits(1)
+        for r in (self.gap_row, self.xfade_row):
+            o.add(r)
+            self.one_file_row.bind_property("active", r, "visible", 0)
+            r.set_visible(False)
+        self.xfade_row.connect("notify::value", lambda *_: self.gap_row.set_sensitive(self.xfade_row.get_value() == 0))
         right.append(o)
         self.ab_holder.append(self._ab_group())
         return page
@@ -224,6 +249,22 @@ class AlbumPage(Gtk.Box):
         for w in (self.ab_play, sw, self.ab_pos, self.ab_time):
             row.append(w)
         card.append(row)
+        crow = Gtk.Box(spacing=10)
+        for m in ("start", "end"):
+            getattr(crow, f"set_margin_{m}")(12)
+        clab = Gtk.Label(label=tr("codec_label"), xalign=0)
+        clab.add_css_class("caption")
+        clab.set_tooltip_text(tr("codec_tip"))
+        self.codec_dd = Gtk.DropDown.new_from_strings([tr("codec_off")] + [AN.CODECS[k]["label"]
+                                                                           for k in AN.CODEC_ORDER])
+        self.codec_dd.set_tooltip_text(tr("codec_tip"))
+        self.codec_dd.connect("notify::selected", lambda *_: self._ab_apply_codec())
+        self.codec_spin = Gtk.Spinner(visible=False)
+        self.codec_info = Gtk.Label(xalign=0, wrap=True, hexpand=True)
+        self.codec_info.add_css_class("caption")
+        for w in (clab, self.codec_dd, self.codec_spin, self.codec_info):
+            crow.append(w)
+        card.append(crow)
         meters = Gtk.Box(spacing=24, homogeneous=True)
         for m in ("start", "end"):
             getattr(meters, f"set_margin_{m}")(12)
@@ -237,6 +278,16 @@ class AlbumPage(Gtk.Box):
             self.ab_meter_boxes[side] = col
             meters.append(col)
         card.append(meters)
+        self.ab_spec = SpectrumView(170)
+        for m in ("start", "end"):
+            getattr(self.ab_spec, f"set_margin_{m}")(12)
+        self.ab_spec.set_tooltip_text(tr("spec_tip"))
+        card.append(self.ab_spec)
+        self.ab_spec_diff = Gtk.Label(xalign=0, wrap=True)
+        self.ab_spec_diff.add_css_class("caption")
+        for m in ("start", "end"):
+            getattr(self.ab_spec_diff, f"set_margin_{m}")(12)
+        card.append(self.ab_spec_diff)
         # dokładna głośność na żywo (EBU R128) – obie wersje, tak jak je słychać po wyrównaniu
         grid = Gtk.Grid(column_spacing=24, row_spacing=4, halign=Gtk.Align.CENTER)
         for m in ("top", "bottom"):
@@ -273,6 +324,180 @@ class AlbumPage(Gtk.Box):
         self.ab_stale_lbl.add_css_class("ab-stale")
         g.add(self.ab_stale_lbl)
         return g
+
+    # ================================================================ referencja
+    def _ref_group(self):
+        g = Adw.PreferencesGroup(title=tr("ref_title"), description=tr("ref_sub"))
+        self.ref_row = Adw.ActionRow(title=tr("ref_none"), activatable=True)
+        self.ref_row.add_prefix(Gtk.Image(icon_name="starred-symbolic"))
+        self.ref_spin = Gtk.Spinner(valign=Gtk.Align.CENTER, visible=False)
+        self.ref_rm = Gtk.Button(icon_name="user-trash-symbolic", tooltip_text=tr("remove"), valign=Gtk.Align.CENTER,
+                                 visible=False)
+        self.ref_rm.add_css_class("flat")
+        self.ref_rm.connect("clicked", lambda *_: self.set_reference(None))
+        self.ref_pick = Gtk.Button(label=tr("bk_choose"), valign=Gtk.Align.CENTER)
+        self.ref_pick.connect("clicked", lambda *_: self.choose_reference())
+        for w in (self.ref_spin, self.ref_rm, self.ref_pick):
+            self.ref_row.add_suffix(w)
+        self.ref_row.connect("activated", lambda *_: self.choose_reference())
+        g.add(self.ref_row)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8, visible=False)
+        box.add_css_class("card")
+        self.ref_box = box
+        grid = Gtk.Grid(column_spacing=18, row_spacing=4, halign=Gtk.Align.CENTER)
+        for m in ("top",):
+            getattr(grid, f"set_margin_{m}")(12)
+        self.ref_vals = {}
+        for c, key in enumerate(("ref_col_ref", "ref_col_album", "ref_col_diff"), 1):
+            h = Gtk.Label(label=tr(key), xalign=1)
+            h.add_css_class("caption-heading")
+            grid.attach(h, c, 0, 1, 1)
+        for r, key in enumerate(("lufs", "lra", "tp", "low", "mid", "high"), 1):
+            lab = Gtk.Label(label=tr("ref_" + key), xalign=0)
+            lab.add_css_class("caption")
+            lab.add_css_class("dim-label")
+            grid.attach(lab, 0, r, 1, 1)
+            for c, col in enumerate(("ref", "album", "diff"), 1):
+                v = Gtk.Label(label="—", xalign=1, width_chars=10)
+                v.add_css_class("numeric")
+                v.add_css_class("caption")
+                grid.attach(v, c, r, 1, 1)
+                self.ref_vals[key + col] = v
+        box.append(grid)
+        self.ref_spec = SpectrumView(150)
+        for m in ("start", "end"):
+            getattr(self.ref_spec, f"set_margin_{m}")(12)
+        box.append(self.ref_spec)
+        self.ref_hints = Gtk.Label(xalign=0, wrap=True)
+        self.ref_hints.add_css_class("caption")
+        for m in ("start", "end"):
+            getattr(self.ref_hints, f"set_margin_{m}")(12)
+        box.append(self.ref_hints)
+        btns = Gtk.Box(spacing=8, halign=Gtk.Align.END)
+        for m in ("bottom", "end"):
+            getattr(btns, f"set_margin_{m}")(12)
+        self.ref_use_level = Gtk.Button(label=tr("ref_use_level"))
+        self.ref_use_level.connect("clicked", lambda *_: self._ref_apply_level())
+        self.ref_use_master = Gtk.Button(label=tr("ref_use_master"))
+        self.ref_use_master.add_css_class("suggested-action")
+        self.ref_use_master.connect("clicked", lambda *_: self._ref_apply_master())
+        btns.append(self.ref_use_level)
+        btns.append(self.ref_use_master)
+        box.append(btns)
+        g.add(box)
+        return g
+
+    def choose_reference(self):
+        C.open_audio_dialog(self.win, lambda paths: paths and self.set_reference(paths[0]))
+
+    def set_reference(self, path):
+        self._ref_tok += 1
+        tok = self._ref_tok
+        self.ref_path = path
+        self.reference = None
+        self._ref_cmp = None
+        self.ref_box.set_visible(False)
+        self.ref_rm.set_visible(bool(path))
+        self.ref_pick.set_label(tr("bk_change") if path else tr("bk_choose"))
+        if not path:
+            self.ref_row.set_title(tr("ref_none"))
+            self.ref_row.set_subtitle("")
+            self.ref_spin.set_visible(False)
+            return
+        L.log(f"utwór referencyjny: {os.path.basename(path)}", tag="ui")
+        self.ref_row.set_title(C.esc(os.path.basename(path)))
+        self.ref_row.set_subtitle(tr("analyzing"))
+        self.ref_spin.set_visible(True)
+        self.ref_spin.set_spinning(True)
+        fut = self.ex.submit(AN.analyze_reference, path)
+        fut.add_done_callback(lambda f: GLib.idle_add(self._ref_done, tok, f))
+
+    def _ref_done(self, tok, fut):
+        if tok != self._ref_tok:
+            return False
+        try:
+            self.reference = fut.result()
+        except Exception as e:  # noqa: BLE001
+            self.ref_spin.set_visible(False)
+            self.ref_row.set_subtitle(f"⚠ {tr('analysis_failed')}: {C.esc(str(e)[:70])}")
+            return False
+        r = self.reference
+        self.ref_row.set_subtitle(tr("track_meta", dur=C.fmt_dur(r["duration"]), lufs=r["lufs"], tp=r["true_peak"]))
+        self._ref_refresh()
+        return False
+
+    def _ref_refresh(self):
+        """Porównanie z referencją – liczy brakujące widma utworów albumu i odświeża kartę."""
+        if not self.reference:
+            return
+        infos = self._infos()
+        if not infos or any(t.info is None for t in self.tracks):
+            self.ref_spin.set_visible(False)
+            self.ref_box.set_visible(False)
+            return
+        todo = [i.path for i in infos if i.path not in self._spectra]
+        if todo:
+            self.ref_spin.set_visible(True)
+            self.ref_spin.set_spinning(True)
+            tok = self._ref_tok
+            for pth in todo:
+                self._spectra[pth] = None
+                fut = self.ex.submit(AN.track_spectrum, pth)
+                fut.add_done_callback(lambda f, pth=pth: GLib.idle_add(self._spec_done, tok, pth, f))
+            return
+        if any(self._spectra.get(i.path) is None for i in infos):
+            return
+        self.ref_spin.set_visible(False)
+        r = self.reference
+        cmp_ = AN.compare(r, infos, [self._spectra[i.path] for i in infos])
+        self._ref_cmp = cmp_
+        sign = lambda v: num(v, "+.1f")  # noqa: E731
+        rows = (("lufs", r["lufs"], cmp_["lufs"], " LUFS"), ("lra", r["lra"], cmp_["lra"], " LU"),
+                ("tp", r["true_peak"], cmp_["true_peak"], " dBTP"))
+        for key, a, b, unit in rows:
+            self.ref_vals[key + "ref"].set_label(num(a) + unit)
+            self.ref_vals[key + "album"].set_label(num(b) + unit)
+            self.ref_vals[key + "diff"].set_label(sign(b - a))
+        ra, rr = AN.range_levels(cmp_["spectrum"]), AN.range_levels(r["spectrum"])
+        for key in ("low", "mid", "high"):
+            self.ref_vals[key + "ref"].set_label(sign(rr[key]) + " dB")
+            self.ref_vals[key + "album"].set_label(sign(ra[key]) + " dB")
+            self.ref_vals[key + "diff"].set_label(sign(cmp_["tone"][key]))
+        self.ref_spec.set_curves([dict(values=AN.tilt(r["spectrum"]).tolist(), role="ref", label=tr("ref_col_ref"),
+                                       heard=True, dash=True),
+                                  dict(values=AN.tilt(cmp_["spectrum"]).tolist(), role="album",
+                                       label=tr("ref_col_album"), heard=True)], "rel")
+        hints = [tr("hint_" + k, v=v) for k, v in cmp_["hints"]]
+        hints.append(tr("hint_master", name=tr("mp_" + cmp_["master"])))
+        self.ref_hints.set_text("\n".join("• " + h for h in hints))
+        self.ref_use_master.set_label(tr("ref_use_master_n", name=tr("mp_" + cmp_["master"])))
+        self.ref_use_master.set_sensitive(self._master() != cmp_["master"])
+        self.ref_use_level.set_sensitive(abs(N.target_value(self._target(), self._manual()) - r["lufs"]) >= 0.25)
+        self.ref_box.set_visible(True)
+
+    def _spec_done(self, tok, pth, fut):
+        try:
+            self._spectra[pth] = fut.result()
+        except Exception as e:  # noqa: BLE001
+            L.log(f"widmo {os.path.basename(pth)}: {e}", "error", tag="ref")
+            self._spectra.pop(pth, None)
+            return False
+        if tok == self._ref_tok and all(self._spectra.get(i.path) is not None for i in self._infos()):
+            self._ref_refresh()
+        return False
+
+    def _ref_apply_level(self):
+        if not self.reference:
+            return
+        lo, hi = N.MANUAL_RANGE
+        self.target_row.set_selected(N.TARGET_ORDER.index("manual"))
+        self.manual_row.set_value(max(lo, min(hi, round(self.reference["lufs"] * 2) / 2)))
+        self.win.toast(tr("ref_level_set", lufs=self.manual_row.get_value()))
+
+    def _ref_apply_master(self):
+        cmp_ = getattr(self, "_ref_cmp", None)
+        if cmp_:
+            self.master_row.set_selected(M.ORDER.index(cmp_["master"]))
 
     # ================================================================ pliki
     def _on_drop(self, _t, value, *_):
@@ -397,6 +622,8 @@ class AlbumPage(Gtk.Box):
         self.mode_row.set_subtitle(tr("mdesc_" + self._mode()))
         self.master_row.set_subtitle(tr(f"mp_{self._master()}_d"))
         self._refresh_chart(pl)
+        if getattr(self, "reference", None):
+            self._ref_refresh()
 
     def _refresh_chart(self, pl):
         """Po normalizacji (te same ustawienia) – zmierzone wartości; wcześniej – przewidywane."""
@@ -475,6 +702,8 @@ class AlbumPage(Gtk.Box):
         meta = dict(artist=self.artist_row.get_text().strip(), album=self.album_row.get_text().strip())
         wavq = "cd" if self.wavq_row.get_selected() == 0 else "hires"
         target, mode, cover, mkey, manual = self._target(), self._mode(), self.cover, self._master(), self._manual()
+        one = self.one_file_row.get_active()
+        gap, xfade = self.gap_row.get_value(), self.xfade_row.get_value()
         run_key = self._key()
         self.ab.stop()
         self.busy = True
@@ -493,6 +722,13 @@ class AlbumPage(Gtk.Box):
                 res = jobs.normalize_album(self.ex, infos, target, mode, out_dir, formats, wavq, cover, meta, prog,
                                            master_key=mkey, manual=manual)
                 text = jobs.report_text(res, tr, target, mode, mkey, manual)
+                if one:
+                    GLib.idle_add(self.status.set_text, tr("one_file_busy"))
+                    img = self.ex.submit(jobs.album_single_file, res, out_dir, gap, xfade, wavq, meta,
+                                         N.ceiling(target, manual), meta["album"] or tr("one_file_name")).result()
+                    text += "\n\n" + tr("one_file_report", name=os.path.basename(img["path"]),
+                                          cue=os.path.basename(img["cue"]), dur=C.fmt_dur(img["seconds"]),
+                                          tp=img["true_peak"])
                 self.results_key = run_key
                 with open(os.path.join(out_dir, "raport.txt" if i18n.LANG == "pl" else "report.txt"), "w") as f:
                     f.write(text + "\n")
@@ -566,7 +802,54 @@ class AlbumPage(Gtk.Box):
         r = res[i]
         f = r["files"]
         b = (f.get("wav") or f.get("mp4") or f.get("mp3"))["path"]
-        self._ab_open(r["info"].path, b, r["info"].lufs, r["stats"]["lufs"])
+        self._ab_open_base(r["info"].path, b, r["info"].lufs, r["stats"]["lufs"])
+
+    def _ab_open_base(self, a, b, a_lufs, b_lufs):
+        self._ab_base = (a, b, a_lufs, b_lufs)
+        self._ab_apply_codec()
+
+    def _ab_codec(self):
+        i = self.codec_dd.get_selected()
+        return AN.CODEC_ORDER[i - 1] if 0 < i <= len(AN.CODEC_ORDER) else None
+
+    def _ab_apply_codec(self):
+        """B jak po kodowaniu w serwisie streamingowym: kodowanie i dekodowanie w tle, potem ta sama para A/B."""
+        if not self._ab_base:
+            return
+        self._codec_tok += 1
+        tok = self._codec_tok
+        a, b, al, bl = self._ab_base
+        codec = self._ab_codec()
+        self.codec_info.remove_css_class("error")
+        if not codec:
+            self.codec_info.set_text("")
+            self.codec_spin.set_visible(False)
+            self._ab_open(a, b, al, bl)
+            return
+        self.codec_spin.set_visible(True)
+        self.codec_spin.set_spinning(True)
+        self.codec_info.set_text(tr("codec_busy"))
+        fut = self.ex.submit(AN.codec_preview, b, codec)
+        fut.add_done_callback(lambda f: GLib.idle_add(self._ab_codec_done, tok, f))
+
+    def _ab_codec_done(self, tok, fut):
+        if tok != self._codec_tok or not self._ab_base:
+            return False
+        self.codec_spin.set_visible(False)
+        try:
+            r = fut.result()
+        except Exception as e:  # noqa: BLE001
+            self.codec_info.set_text(f"⚠ {e}")
+            return False
+        a, _b, al, _bl = self._ab_base
+        pos = self.ab.position()
+        self._ab_open(a, r["path"], al, r["lufs"])
+        if pos > 0:
+            self.ab.seek(pos, now=True)
+        over = r["true_peak"] > 0.0
+        self.codec_info.set_text(tr("codec_over" if over else "codec_ok", name=r["label"], tp=r["true_peak"]))
+        (self.codec_info.add_css_class if over else self.codec_info.remove_css_class)("error")
+        return False
 
     def _ab_open(self, a, b, a_lufs, b_lufs):
         """Ładuje parę A/B (cały utwór po normalizacji albo 20-sekundową próbkę) z wyrównaną głośnością."""
@@ -580,6 +863,8 @@ class AlbumPage(Gtk.Box):
         self._ab_set_stale(False)
         for m in self.ab_meters.values():
             m.reset()
+        self.ab_spec.reset()
+        self.ab_spec_diff.set_text("")
         self.ab_info.set_text(tr("ab_files", a=a_lufs, b=b_lufs, d=abs(a_lufs - b_lufs)))
         self._ab_cur = None
         for v in self.ab_vals.values():
@@ -613,6 +898,10 @@ class AlbumPage(Gtk.Box):
         ca, cb, ga, gb = self._ab_cur
         self.ab_vals["ai"].set_label(self._fmt_lufs(ca["integrated"] + ga))
         self.ab_vals["bi"].set_label(self._fmt_lufs(cb["integrated"] + gb))
+        if "avg_spectrum" in ca and "avg_spectrum" in cb:      # co mastering zmienił w barwie (średnio)
+            d = {k: AN.range_levels(cb["avg_spectrum"])[k] - AN.range_levels(ca["avg_spectrum"])[k]
+                 for k in ("low", "mid", "high")}
+            self.ab_spec_diff.set_text(tr("spec_diff", low=d["low"], mid=d["mid"], high=d["high"]))
         self._ab_tick()
 
     @staticmethod
@@ -657,6 +946,15 @@ class AlbumPage(Gtk.Box):
                     for key in ("_h", "m", "s", "i"):
                         w = self.ab_vals[side + key]
                         (w.add_css_class if side == heard else w.remove_css_class)("ab-heard")
+                spec = []
+                for side, c, g in (("a", ca, ga), ("b", cb, gb)):
+                    bands = c.get("bands")
+                    if bands is not None and len(bands):
+                        i = max(0, min(len(bands) - 1, int(round((p - 0.2) / 0.1))))
+                        spec.append(dict(values=(bands[i].astype("float32") + g).tolist(), role=side,
+                                         heard=side == heard, label=tr("ab_" + side)))
+                if spec and (self.ab.playing or not self.ab_spec.curves):
+                    self.ab_spec.set_curves(spec, "abs")
                 for side in ("a", "b"):
                     if self.ab.playing:                           # każdy miernik = głośność chwilowa swojej wersji
                         self.ab_meters[side].set_level(vals[side][0])
@@ -731,7 +1029,7 @@ class AlbumPage(Gtk.Box):
         self.ab_group.set_description(tr("pv_desc", name=os.path.basename(t.path), preset=tr("mp_" + mkey),
                                          target=target))
         self._ab_key = key
-        self._ab_open(r["a"], r["b"], r["a_lufs"], r["b_lufs"])
+        self._ab_open_base(r["a"], r["b"], r["a_lufs"], r["b_lufs"])
         self.ab_track_row.set_visible(False)
         self.ab.play()
         return False
@@ -746,3 +1044,50 @@ class AlbumPage(Gtk.Box):
         tv.set_content(Gtk.ScrolledWindow(child=view))
         w.set_content(tv)
         w.present()
+
+    # ================================================================ projekt
+    def get_state(self):
+        return dict(tracks=[t.path for t in self.tracks], master=self._master(), target=self._target(),
+                    manual_lufs=self._manual(), mode=self._mode(),
+                    wav_quality="cd" if self.wavq_row.get_selected() == 0 else "hires",
+                    formats=[k for k, c in self.fmt.items() if c.get_active()],
+                    artist=self.artist_row.get_text(), album=self.album_row.get_text(), cover=self.cover,
+                    one_file=self.one_file_row.get_active(), gap=self.gap_row.get_value(),
+                    xfade=self.xfade_row.get_value(), reference=self.ref_path, codec=self._ab_codec())
+
+    def set_state(self, d, missing):
+        if self.busy:
+            return
+        self.clear()
+        sel = lambda row, order, key: key in order and row.set_selected(order.index(key))  # noqa: E731
+        sel(self.master_row, M.ORDER, d.get("master"))
+        if d.get("manual_lufs") is not None:
+            self.manual_row.set_value(float(d["manual_lufs"]))
+        sel(self.target_row, N.TARGET_ORDER, d.get("target"))
+        sel(self.mode_row, N.MODES, d.get("mode"))
+        self.wavq_row.set_selected(1 if d.get("wav_quality") == "hires" else 0)
+        fm = d.get("formats") or ["wav"]
+        for k, c in self.fmt.items():
+            c.set_active(k in fm)
+        self.artist_row.set_text(d.get("artist") or "")
+        self.album_row.set_text(d.get("album") or "")
+        cov = d.get("cover")
+        self.set_cover(cov if cov and os.path.exists(cov) else None)
+        if cov and not os.path.exists(cov):
+            missing.append(cov)
+        self.one_file_row.set_active(bool(d.get("one_file")))
+        self.gap_row.set_value(float(d.get("gap", 2.0)))
+        self.xfade_row.set_value(float(d.get("xfade", 0.0)))
+        codec = d.get("codec")
+        self.codec_dd.set_selected(AN.CODEC_ORDER.index(codec) + 1 if codec in AN.CODEC_ORDER else 0)
+        paths = [p for p in d.get("tracks", []) if os.path.exists(p)]
+        missing += [p for p in d.get("tracks", []) if not os.path.exists(p)]
+        if paths:
+            self.add_files(paths)
+        ref = d.get("reference")
+        if ref and os.path.exists(ref):
+            self.set_reference(ref)
+        elif ref:
+            missing.append(ref)
+        else:
+            self.set_reference(None)

@@ -36,7 +36,7 @@ class LiveMixer:
         """tracks: lista obiektów z polami dry, wet, volume_db, fx, mute (dry/wet mogą być None)."""
         pos, was = self.position(), self.playing
         self._teardown()
-        self.tracks = [t for t in tracks if t.dry and t.wet]
+        self.tracks = [t for t in tracks if t.dry]          # wet == None -> tylko sucha (podkład)
         if not self.tracks:
             self._notify()
             return
@@ -44,7 +44,7 @@ class LiveMixer:
         parts = [f"audiomixer name=mix ! audioconvert ! audio/x-raw,format=F32LE ! "
                  f"level name=lvl interval=60000000 post-messages=true ! audioconvert ! {sink}"]
         for i, t in enumerate(self.tracks):
-            for kind in ("dry", "wet"):
+            for kind in ("dry", "wet") if t.wet else ("dry",):
                 parts.append(f"filesrc location={_q(getattr(t, kind))} ! wavparse ! audioconvert ! "
                              f"audioresample ! volume name={kind}{i} ! mix.")
         self.pipe = Gst.parse_launch("  ".join(parts))
@@ -69,7 +69,8 @@ class LiveMixer:
         for i, t in enumerate(self.tracks):
             v = 0.0 if t.mute else 10 ** (t.volume_db / 20)
             self.pipe.get_by_name(f"dry{i}").set_property("volume", min(v, 10.0))
-            self.pipe.get_by_name(f"wet{i}").set_property("volume", min(v * fx_gain(t.fx), 10.0))
+            if t.wet:
+                self.pipe.get_by_name(f"wet{i}").set_property("volume", min(v * fx_gain(t.fx), 10.0))
 
     def _teardown(self):
         if self._seek_src:
