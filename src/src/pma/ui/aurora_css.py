@@ -27,7 +27,7 @@ COLORS = {
 
 EXTRA = {
     False: """
-window.background:not(.aurora-off) {
+window.background:not(.aurora-off):not(.splash) {
   background-image: linear-gradient(135deg, #f6f2ff 0%, #eef8ff 55%, #fff4f8 100%);
 }
 headerbar { box-shadow: inset 0 -1px alpha(#7c5cff, 0.12); }
@@ -45,7 +45,7 @@ button.suggested-action {
 }
 """,
     True: """
-window.background:not(.aurora-off) {
+window.background:not(.aurora-off):not(.splash) {
   background-image: radial-gradient(ellipse at 12% -5%, alpha(#22d3ee, 0.20), transparent 55%),
                     radial-gradient(ellipse at 100% 105%, alpha(#a855f7, 0.24), transparent 55%);
 }

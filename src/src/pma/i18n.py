@@ -42,7 +42,7 @@ S = {
         "pause": "Pauza",
         # wokal
         "v_drop_title": "Przeciągnij ścieżki wokalu",
-        "v_drop_sub": "1–10 plików WAV: wokal główny, dopowiedzi, chórki… – kolejność według nazw",
+        "v_drop_sub": "1–20 plików WAV: wokal główny, dopowiedzi, chórki… – kolejność według nazw",
         "v_tracks": "Ścieżki wokalu",
         "v_style": "Mastering wokalu",
         "v_style_sub": "Wybór ustawia wszystkie ścieżki – każdą możesz potem zmienić osobno",
@@ -148,7 +148,7 @@ S = {
         "play": "Play",
         "pause": "Pause",
         "v_drop_title": "Drop your vocal tracks",
-        "v_drop_sub": "1–10 WAV files: lead vocal, ad-libs, backing vocals… – ordered by file name",
+        "v_drop_sub": "1–20 WAV files: lead vocal, ad-libs, backing vocals… – ordered by file name",
         "v_tracks": "Vocal tracks",
         "v_style": "Vocal mastering",
         "v_style_sub": "Sets all tracks – you can change each one separately afterwards",

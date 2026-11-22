@@ -1,4 +1,4 @@
-"""Zakładka WOKAL: 1–10 ścieżek, 10 opcji masteringu + MANUAL (kafle z suwakami), suwaki głośności i pogłosu/echa
+"""Zakładka WOKAL: 1–20 ścieżek, 10 opcji masteringu + MANUAL (kafle z suwakami), suwaki głośności i pogłosu/echa
 działające na żywo, przycisk SCAL WSZYSTKIE ŚCIEŻKI W JEDNĄ."""
 import os
 import time
@@ -18,8 +18,8 @@ from .. import i18n  # noqa: E402
 from .. import log as L  # noqa: E402
 from .mixer import LiveMixer  # noqa: E402
 
-MAX_TRACKS = 10
-LETTERS = "ABCDEFGHIJ"
+MAX_TRACKS = 20
+LETTERS = "ABCDEFGHIJKLMNOPQRST"
 
 
 class VTrack:

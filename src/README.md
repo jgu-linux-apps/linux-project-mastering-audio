@@ -175,6 +175,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.6.1** – Vocals: up to **20 tracks** (letters A–T); splash screen corners are transparent again with the Aurora theme.
 - **0.6.0** – Vocals: **backing track** (instrumental) on top of the vocal tracks – listening only or in the merged
   file, with volume, offset and mute; **per-track offset** in milliseconds. Album: **reference track** with comparison
   and suggested correction, live **spectrum analyzer** in A/B, **B as streamed** (AAC / Opus / Vorbis / MP3 preview),
