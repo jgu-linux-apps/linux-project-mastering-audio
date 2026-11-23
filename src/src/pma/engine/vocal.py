@@ -475,12 +475,12 @@ PEAK_HOP_S = 0.01      # jeden punkt fali na 10 ms – wystarcza też przy duży
 
 
 def peaks(path):
-    """Obwiednia do rysowania fali na osi czasu: maksimum |x| (kanały złączone) co PEAK_HOP_S."""
+    """Obwiednia do rysowania fali na osi czasu: maksimum |x| (kanały złączone) co PEAK_HOP_S – w prawdziwej skali
+    (1.0 = 0 dBFS), żeby wysokość fali pokazywała rzeczywisty poziom ścieżki."""
     x, fs = sf.read(path, dtype="float32", always_2d=True)
     m = np.abs(x).max(axis=1)
     hop = max(1, int(fs * PEAK_HOP_S))
     n = int(np.ceil(len(m) / hop))
     m = np.pad(m, (0, n * hop - len(m)))
     p = m.reshape(n, hop).max(axis=1)
-    top = float(p.max()) or 1.0
-    return (p / top).astype(np.float16), len(x) / fs
+    return np.minimum(p, 4.0).astype(np.float16), len(x) / fs

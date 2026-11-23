@@ -15,6 +15,7 @@ from ..engine.vocal import PEAK_HOP_S  # noqa: E402
 
 LABEL_W, OFF_W, RULER_H, LANE_H, GAP = 118, 78, 22, 40, 4
 OFFSET_RANGE = (-2000.0, 2000.0)
+DISPLAY_GAIN = 1.6     # fala w prawdziwej skali: ścieżki na wspólnym poziomie (−20 LUFS) mają szczyty ok. −4 dBFS
 
 
 class Lane:
@@ -266,8 +267,11 @@ class Timeline(AlbumChart):
             cr.set_line_width(2 if sel else 1)
             self._bar(cr, a + 0.5, y + LANE_H - 2.5, y + 2.5, b - a - 1, min(rr, 5), fill=False)
             cr.stroke()
-            if lane.peaks is not None and len(lane.peaks):     # fala: jedna kreska na piksel
-                mid, amp = y + LANE_H / 2, LANE_H / 2 - 5
+            if lane.peaks is not None and len(lane.peaks):     # fala: jedna kreska na piksel, z suwakiem głośności
+                mid = y + LANE_H / 2
+                amp = (LANE_H / 2 - 5) * DISPLAY_GAIN * 10 ** (getattr(lane.obj, "volume_db", 0.0) / 20)
+                if getattr(lane.obj, "mute", False):
+                    amp = 0.0
                 cr.set_source_rgba(*rgb, 0.9)
                 cr.set_line_width(1)
                 n = len(lane.peaks)
@@ -277,7 +281,7 @@ class Timeline(AlbumChart):
                     i0, i1 = int(t0 / PEAK_HOP_S), int(math.ceil(t1 / PEAK_HOP_S))
                     if i1 <= 0 or i0 >= n:
                         continue
-                    v = float(lane.peaks[max(0, i0):max(i0 + 1, min(n, i1))].max()) * amp
+                    v = min(LANE_H / 2 - 3, float(lane.peaks[max(0, i0):max(i0 + 1, min(n, i1))].max()) * amp)
                     cr.move_to(px + 0.5, mid - max(0.5, v))
                     cr.line_to(px + 0.5, mid + max(0.5, v))
                 cr.stroke()

@@ -129,6 +129,14 @@ class VocalPage(Gtk.Box):
 
         tg = Adw.PreferencesGroup(title=tr("v_tracks"))
         hb = Gtk.Box(spacing=4)
+        lv = Gtk.Button(valign=Gtk.Align.CENTER, tooltip_text=tr("level_all_tip"))
+        lvb = Gtk.Box(spacing=6)
+        lvb.append(Gtk.Image(icon_name="object-flip-vertical-symbolic"))
+        lvb.append(Gtk.Label(label=tr("level_all")))
+        lv.set_child(lvb)
+        lv.add_css_class("flat")
+        lv.connect("clicked", lambda *_: self.level_all())
+        hb.append(lv)
         for icon, tip, cb in (("list-add-symbolic", tr("add_files"), self.choose_files),
                               ("edit-clear-all-symbolic", tr("clear"), self.clear)):
             b = Gtk.Button(icon_name=icon, tooltip_text=tip, valign=Gtk.Align.CENTER)
@@ -449,10 +457,12 @@ class VocalPage(Gtk.Box):
             self.backing.volume_db = round(sc.get_value() * 2) / 2
             self.bk_vol_v.set_text(f"{num(self.backing.volume_db, '+.1f')} dB")
             self.mixer.update_volumes()
+            self.timeline.queue_draw()
 
     def _on_bk_mute(self, btn):
         if self.backing:
             self.backing.mute = btn.get_active()
+            self.timeline.queue_draw()
             self.mixer.update_volumes()
             self._update()
 
@@ -773,6 +783,15 @@ class VocalPage(Gtk.Box):
         t.volume_db = round(s.get_value() * 2) / 2
         self._label_values(t)
         self.mixer.update_volumes()
+        self.timeline.queue_draw()
+
+    def level_all(self):
+        """Wszystkie wokale na wspólny poziom (−20 LUFS po masteringu = suwak 0 dB); dalej każdy suwakiem osobno."""
+        for t in self.tracks:
+            if t.w:
+                t.w["vol"].set_value(0.0)
+        L.log("wyrównano głośność wokali: wszystkie suwaki 0 dB (−20 LUFS)", tag="ui")
+        self.win.toast(tr("level_all_done"))
 
     def _on_fx(self, s, t):
         t.fx = s.get_value()
@@ -781,6 +800,7 @@ class VocalPage(Gtk.Box):
 
     def _on_mute(self, b, t):
         t.mute = b.get_active()
+        self.timeline.queue_draw()
         L.log(f"{os.path.basename(t.path)}: {'wyciszona' if t.mute else 'włączona'}", tag="ui")
         self.mixer.update_volumes()
 

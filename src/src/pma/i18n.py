@@ -602,6 +602,18 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'level_all': 'Wyrównaj głośność',
+    'level_all_tip': 'Każdy wokal jest już po masteringu na tym samym poziomie (−20 LUFS = suwak 0 dB). Ten przycisk ustawia wszystkie suwaki głośności z powrotem na 0 dB.',
+    'level_all_done': 'Wszystkie wokale na wspólnym poziomie (0 dB = −20 LUFS)',
+})
+S["en"].update({
+    'level_all': 'Level all',
+    'level_all_tip': 'After mastering every vocal is already at the same level (−20 LUFS = slider at 0 dB). This button sets all volume sliders back to 0 dB.',
+    'level_all_done': 'All vocals at a common level (0 dB = −20 LUFS)',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:
