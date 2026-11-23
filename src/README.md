@@ -46,6 +46,9 @@ It is not another Audacity – just what you need. The interface is available in
    **Backing track (instrumental)** – a card above the vocal tracks: load the music and hear the vocals against it.
    It plays unprocessed, levelled to about 2 dB above the vocals, with its own **volume**, **offset** and **mute**; it is
    for listening only unless you switch on **Include the backing track in the merged file**.
+   **Timeline** – above the tracks, Audacity-style: the backing track and every vocal as a clip with its waveform.
+   Grab a clip and drag it left / right to set its offset (snaps to 10 ms, can be switched off); click the ruler to seek,
+   Ctrl + wheel zooms, Shift + wheel pans, ← → move the selected clip by 1 ms (Shift: 10 ms), double-click resets it.
 4. **Live listening** (bar at the bottom): sliders work during playback, the meter shows the peak of the sum and warns
    when it is too loud. Seeking is safe: the jump happens when the slider stops, and if playback ever stalls the
    player rebuilds itself at the same position.
@@ -175,6 +178,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.7.0** – Vocals: **timeline** with waveform clips of the backing track and vocals – drag clips to shift them in time, seek, zoom and nudge with the arrow keys.
 - **0.6.1** – Vocals: up to **20 tracks** (letters A–T); splash screen corners are transparent again with the Aurora theme.
 - **0.6.0** – Vocals: **backing track** (instrumental) on top of the vocal tracks – listening only or in the merged
   file, with volume, offset and mute; **per-track offset** in milliseconds. Album: **reference track** with comparison

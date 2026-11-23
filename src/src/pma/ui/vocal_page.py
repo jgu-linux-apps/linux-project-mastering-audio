@@ -17,6 +17,7 @@ from . import common as C  # noqa: E402
 from .. import i18n  # noqa: E402
 from .. import log as L  # noqa: E402
 from .mixer import LiveMixer  # noqa: E402
+from .timeline import Lane, Timeline  # noqa: E402
 
 MAX_TRACKS = 20
 LETTERS = "ABCDEFGHIJKLMNOPQRST"
@@ -124,6 +125,7 @@ class VocalPage(Gtk.Box):
         self.cards["studio"].set_active(True)
         g.add(cards)
         col.append(g)
+        col.append(self._timeline_group())
 
         tg = Adw.PreferencesGroup(title=tr("v_tracks"))
         hb = Gtk.Box(spacing=4)
@@ -235,6 +237,51 @@ class VocalPage(Gtk.Box):
             return
         self.manual_group.set_visible(self.album_preset == "manual" or any(t.preset == "manual" for t in self.tracks))
 
+    # ---------------------------------------------------------------- oś czasu
+    def _timeline_group(self):
+        g = Adw.PreferencesGroup(title=tr("tl_title"), description=tr("tl_sub"), visible=False)
+        self.tl_group = g
+        snap = Gtk.CheckButton(label=tr("tl_snap"), active=True, valign=Gtk.Align.CENTER)
+        snap.connect("toggled", lambda b: setattr(self.timeline, "snap", b.get_active()))
+        g.set_header_suffix(snap)
+        self.timeline = Timeline(on_offset=self._tl_offset, on_seek=lambda t: self.mixer.seek(t))
+        card = Gtk.Box()
+        card.add_css_class("card")
+        for m in ("top", "bottom", "start", "end"):
+            getattr(self.timeline, f"set_margin_{m}")(10)
+        card.append(self.timeline)
+        g.add(card)
+        return g
+
+    def _tl_refresh(self):
+        lanes = []
+        b = self.backing
+        if b:
+            lanes.append(Lane(b, tr("bk_short"), "backing"))
+        for n, t in enumerate(self.tracks):
+            lanes.append(Lane(t, f"{LETTERS[n]} · {os.path.splitext(os.path.basename(t.path))[0]}", "vocal"))
+        self.timeline.set_lanes(lanes)
+        self.tl_group.set_visible(bool(lanes))
+
+    def _tl_peaks(self, obj, path):
+        fut = self.ex.submit(V.peaks, path)
+
+        def done(f):
+            try:
+                pk, dur = f.result()
+            except Exception:  # noqa: BLE001
+                return False
+            self.timeline.set_peaks(obj, pk, dur)
+            return False
+        fut.add_done_callback(lambda f: GLib.idle_add(done, f))
+
+    def _tl_offset(self, obj, ms):
+        """Klip przeciągnięty na osi czasu -> to samo pole co suwak „Przesunięcie” (ono przelicza dźwięk)."""
+        if obj is self.backing:
+            self.bk_of_spin.set_value(ms)
+        elif obj in self.tracks and obj.w:
+            obj.w["of_spin"].set_value(ms)
+
     # ---------------------------------------------------------------- podkład
     def _backing_group(self):
         g = Adw.PreferencesGroup(title=tr("bk_title"), description=tr("bk_sub"))
@@ -302,6 +349,7 @@ class VocalPage(Gtk.Box):
         b.offset_ms = round(sp.get_value())
         if round(self.bk_of.get_value()) != b.offset_ms:
             self.bk_of.set_value(b.offset_ms)
+        self.timeline.queue_draw()
         src = self._offset_src.pop("bk", 0)
         if src:
             GLib.source_remove(src)
@@ -353,6 +401,7 @@ class VocalPage(Gtk.Box):
         elif not self.tracks:
             self.fs = None
         self._bk_fill()
+        self._tl_refresh()
         self._remix()
 
     def _backing_ready(self, b, fut):
@@ -365,6 +414,7 @@ class VocalPage(Gtk.Box):
             self._bk_fill()
             return False
         self._bk_fill()
+        self._tl_peaks(b, b.raw)
         self._bk_shift()
         return False
 
@@ -602,6 +652,7 @@ class VocalPage(Gtk.Box):
         self.list.remove_all()
         for n, t in enumerate(self.tracks):
             self.list.append(self._track_row(n, t))
+        self._tl_refresh()
 
     def _fill_sub(self, t):
         if not t.w:
@@ -639,6 +690,7 @@ class VocalPage(Gtk.Box):
         try:
             dry, wet, t.duration = fut.result()
             t.raw = (dry, wet)
+            self._tl_peaks(t, dry)
         except Exception as e:  # noqa: BLE001
             t.error = str(e)
             self._fill_sub(t)
@@ -676,6 +728,7 @@ class VocalPage(Gtk.Box):
         t.offset_ms = round(sp.get_value())
         if round(t.w["of"].get_value()) != t.offset_ms:
             t.w["of"].set_value(t.offset_ms)
+        self.timeline.queue_draw()
         src = self._offset_src.pop(id(t), 0)
         if src:
             GLib.source_remove(src)
@@ -759,6 +812,7 @@ class VocalPage(Gtk.Box):
             self.pos.set_value(p)
             self.pos.handler_unblock(self._pos_h)
             self.time_lbl.set_text(f"{C.fmt_dur(p)} / {C.fmt_dur(d)}")
+            self.timeline.set_position(p)
         if not self.mixer.playing:
             self.meter.set_value(0)
         return True

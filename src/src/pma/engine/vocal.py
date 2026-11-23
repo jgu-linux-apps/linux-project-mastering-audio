@@ -469,3 +469,18 @@ def merge(tracks, out_path, fs):
     L.log(f"zapisano {os.path.basename(out_path)} (WAV 24 bit, {fs} Hz)", "ok", tag="merge")
     return dict(path=out_path, lufs=dsp.integrated_lufs(mix, fs), true_peak=dsp.true_peak_db(mix),
                 limited_db=lim, peak_before=tp_before, seconds=n / fs)
+
+
+PEAK_HOP_S = 0.01      # jeden punkt fali na 10 ms – wystarcza też przy dużym przybliżeniu osi czasu
+
+
+def peaks(path):
+    """Obwiednia do rysowania fali na osi czasu: maksimum |x| (kanały złączone) co PEAK_HOP_S."""
+    x, fs = sf.read(path, dtype="float32", always_2d=True)
+    m = np.abs(x).max(axis=1)
+    hop = max(1, int(fs * PEAK_HOP_S))
+    n = int(np.ceil(len(m) / hop))
+    m = np.pad(m, (0, n * hop - len(m)))
+    p = m.reshape(n, hop).max(axis=1)
+    top = float(p.max()) or 1.0
+    return (p / top).astype(np.float16), len(x) / fs

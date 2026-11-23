@@ -588,6 +588,20 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'tl_title': 'Oś czasu',
+    'tl_sub': 'Złap klip łapką i przesuń w lewo / prawo · kliknięcie w linijkę przewija · Ctrl + kółko: zoom · Shift + kółko: przesuwanie widoku · ← →: ±1 ms (Shift ±10 ms) · podwójne kliknięcie: zero',
+    'tl_snap': 'Przyciągaj do 10 ms',
+    'bk_short': 'Podkład',
+})
+S["en"].update({
+    'tl_title': 'Timeline',
+    'tl_sub': 'Grab a clip and drag it left / right · click the ruler to seek · Ctrl + wheel: zoom · Shift + wheel: pan · ← →: ±1 ms (Shift ±10 ms) · double-click: zero',
+    'tl_snap': 'Snap to 10 ms',
+    'bk_short': 'Backing track',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:
