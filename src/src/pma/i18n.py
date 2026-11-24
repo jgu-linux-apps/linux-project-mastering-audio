@@ -714,6 +714,20 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'tl_undone_ops': 'Cofnięto ostatnią edycję',
+    'tl_undone_offset': 'Cofnięto przesunięcie ścieżki',
+    'tl_undone_volume': 'Cofnięto zmianę głośności',
+    'tl_undone_mute': 'Cofnięto wyciszenie',
+})
+S["en"].update({
+    'tl_undone_ops': 'Last edit undone',
+    'tl_undone_offset': 'Track move undone',
+    'tl_undone_volume': 'Volume change undone',
+    'tl_undone_mute': 'Mute undone',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:

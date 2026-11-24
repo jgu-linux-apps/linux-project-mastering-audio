@@ -58,7 +58,8 @@ It is not another Audacity – just what you need. The interface is available in
    **Editing on the timeline** – the toolbar has **Move** (hand) and **Select** tools (or drag with Shift):
    **Cut** (Ctrl+X – copies and leaves silence, so the vocal stays in time with the beat), **Copy** (Ctrl+C),
    **Paste** (Ctrl+V – at the red cursor on the selected track, replacing what was there; e.g. duplicate a chorus),
-   **Silence** (Delete / M – complete silence on the selection) and **Undo** (Ctrl+Z); Space plays / pauses.
+   **Silence** (Delete / M – complete silence on the selection) and **Undo** (Ctrl+Z – also undoes moving a clip, the
+   volume knob and the M button); Space plays / pauses.
    Edits work on the processed audio, keep 5 ms fades at the edges and are saved in the project.
    Vocal tracks are shown in **two columns**.
 4. **Live listening** (bar at the bottom): sliders work during playback, the meter shows the peak of the sum and warns
@@ -191,6 +192,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.8.6** – timeline: Ctrl+Z / Undo also restores a moved clip, a volume knob change and the M (mute) button.
 - **0.8.5** – timeline: **M** (mute) button for every lane next to the volume knob.
 - **0.8.4** – timeline: volume knob for every lane (drag, middle-button drag up / down, wheel over the name, double-click = 0 dB), dB value under the name.
 - **0.8.3** – timeline readable in light mode: darker waveforms and outlines, softer clip fill and selection.

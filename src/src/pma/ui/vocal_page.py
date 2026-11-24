@@ -67,7 +67,7 @@ class VocalPage(Gtk.Box):
         self.backing = None
         self._offset_src = {}
         self.clipboard = None              # (ścieżka źródłowa, od, do) – sekundy czasu ścieżki
-        self._undo = []                    # ścieżki, w kolejności edycji (Ctrl+Z cofa ostatnią)
+        self._undo = []                    # (rodzaj, obiekt, poprzednia wartość) – Ctrl+Z cofa ostatnią zmianę
         self.fs = None
         self.album_preset = "studio"
         self.busy = False
@@ -265,6 +265,7 @@ class VocalPage(Gtk.Box):
         self.timeline = Timeline(on_offset=self._tl_offset, on_seek=lambda t: self.mixer.seek(t),
                                  on_action=self.tl_action, on_volume=self._tl_volume,
                                  on_mute=self._tl_mute)
+        self.timeline.on_commit = lambda kind, obj, old: self._undo.append((kind, obj, old))
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class("card")
         card.append(self._tl_toolbar())
@@ -356,13 +357,24 @@ class VocalPage(Gtk.Box):
             return
         if act == "undo":
             while self._undo:
-                t = self._undo.pop()
-                if t in self.tracks and t.ops:
-                    t.ops.pop()
-                    L.log(f"{os.path.basename(t.path)}: cofnięto edycję", tag="edit")
-                    self._post(t)
-                    self.win.toast(tr("tl_undone"))
-                    return
+                kind, obj, old = self._undo.pop()
+                if obj is not self.backing and obj not in self.tracks:
+                    continue                                    # ścieżkę usunięto – pomiń
+                if kind == "ops":
+                    if not obj.ops:
+                        continue
+                    obj.ops.pop()
+                    self._post(obj)
+                elif kind == "offset":
+                    self._tl_offset(obj, old)
+                elif kind == "volume":
+                    self._tl_volume(obj, old)
+                elif kind == "mute":
+                    self._tl_mute(obj, old)
+                L.log(f"{os.path.basename(obj.path)}: cofnięto ({kind})", tag="edit")
+                self.win.toast(tr("tl_undone_" + kind))
+                self.timeline.queue_draw()
+                return
             self.win.toast(tr("tl_nothing_undo"))
             return
         if act in ("copy", "cut", "silence"):
@@ -399,7 +411,7 @@ class VocalPage(Gtk.Box):
 
     def _edit(self, t, op):
         t.ops.append(op)
-        self._undo.append(t)
+        self._undo.append(("ops", t, None))
         L.log(f"{os.path.basename(t.path)}: edycja {op[0]}", tag="edit")
         self._post(t)
 

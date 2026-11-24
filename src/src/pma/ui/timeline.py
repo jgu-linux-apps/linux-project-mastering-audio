@@ -34,6 +34,7 @@ class Timeline(AlbumChart):
     def __init__(self, on_offset, on_seek, on_action=None, on_volume=None, on_mute=None):
         super().__init__()
         self.on_mute = on_mute
+        self.on_commit = None            # (rodzaj, obiekt, poprzednia wartość) – do cofania Ctrl+Z
         self.on_offset, self.on_seek, self.on_action, self.on_volume = on_offset, on_seek, on_action, on_volume
         self._knob = None                # (lane, głośność na starcie) – przeciąganie pokrętła
         self.tool = "move"               # move: łapka przesuwa klipy · select: zaznaczanie fragmentu
@@ -176,11 +177,14 @@ class Timeline(AlbumChart):
         mute = self._mute_hit(x, y)
         if mute:
             if self.on_mute:
+                self._commit("mute", mute.obj, mute.obj.mute)
                 self.on_mute(mute.obj, not mute.obj.mute)
             self.queue_draw()
             return
         knob = self._knob_hit(x, y)
         if knob and n == 2:
+            if knob.obj.volume_db != 0.0:
+                self._commit("volume", knob.obj, knob.obj.volume_db)
             self._set_volume(knob, 0.0)
             return
         if knob:
@@ -258,6 +262,9 @@ class Timeline(AlbumChart):
 
     def _end(self, _g, _dx, _dy):
         if self._knob:
+            lane, start = self._knob
+            if lane.obj.volume_db != start:
+                self._commit("volume", lane.obj, start)
             self._knob = None
             self.set_cursor(Gdk.Cursor.new_from_name("default"))
         self._ruler_drag = False
@@ -267,16 +274,24 @@ class Timeline(AlbumChart):
             self._drag = None
             self.set_cursor(Gdk.Cursor.new_from_name("grab"))
             if lane.obj.offset_ms != start:
+                self._commit("offset", lane.obj, start)
                 self.on_offset(lane.obj, lane.obj.offset_ms)
 
     def _set(self, lane, ms, final):
         if self.snap:
             ms = round(ms / 10) * 10
         ms = float(round(max(OFFSET_RANGE[0], min(OFFSET_RANGE[1], ms))))
+        old = lane.obj.offset_ms
         lane.obj.offset_ms = ms
         self.queue_draw()
         if final:
+            if ms != old:
+                self._commit("offset", lane.obj, old)
             self.on_offset(lane.obj, ms)
+
+    def _commit(self, kind, obj, old):
+        if self.on_commit:
+            self.on_commit(kind, obj, old)
 
     def _hover(self, _c, x, y):
         name = "grab" if self._clip_hit(x, y) else "pointer" if (y < RULER_H and x >= LABEL_W) else "default"
