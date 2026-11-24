@@ -9,6 +9,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gdk, Gtk  # noqa: E402
+import cairo  # noqa: E402
 
 from . import themes  # noqa: E402
 from .album_chart import AlbumChart, _minus  # noqa: E402
@@ -93,7 +94,8 @@ class Timeline(AlbumChart):
         self.queue_draw()
 
     def set_position(self, p):
-        if abs(p - self.position) > 0.005:
+        _x0, aw = self._area()
+        if abs(p - self.position) * aw / max(0.01, self._win()[1]) >= 0.5:   # ruch o mniej niż pół piksela – bez rysowania
             self.position = p
             self.queue_draw()
 
@@ -458,7 +460,27 @@ class Timeline(AlbumChart):
         cr.line_to(kx + math.cos(ang) * (KNOB_R - 3), ky + math.sin(ang) * (KNOB_R - 3))
         cr.stroke()
 
+    def _static_key(self, w, h):
+        """Wszystko, od czego zależy warstwa fal i opisów (bez kursora odtwarzania i zaznaczenia)."""
+        lanes = tuple((id(ln.obj), id(ln.peaks), ln.duration, ln.name, ln.obj.offset_ms,
+                       getattr(ln.obj, "volume_db", 0), getattr(ln.obj, "mute", False),
+                       getattr(ln.obj, "solo", False), ln.obj is self.selected) for ln in self.lanes)
+        return (w, h, self._win(), lanes, themes.CURRENT, Adw.StyleManager.get_default().get_dark(),
+                self.get_scale_factor(), str(self.get_color()))
+
     def _draw(self, _area, cr, w, h):
+        """Fale 14+ ścieżek rysowane piksel po pikselu są drogie – warstwa statyczna jest zapamiętywana,
+        a przy odtwarzaniu (10× na sekundę) dorysowuje się tylko kursor i zaznaczenie."""
+        key = self._static_key(w, h)
+        if getattr(self, "_cache_key", None) != key:
+            sf = cr.get_target().create_similar(cairo.CONTENT_COLOR_ALPHA, w, h)
+            self._draw_static(cairo.Context(sf), w, h)
+            self._cache, self._cache_key = sf, key
+        cr.set_source_surface(self._cache, 0, 0)
+        cr.paint()
+        self._draw_overlay(cr, w, h)
+
+    def _draw_static(self, cr, w, h):
         x0, aw = self._area()
         start, length = self._win()
         # linijka
@@ -527,6 +549,8 @@ class Timeline(AlbumChart):
                     cr.line_to(px + 0.5, mid + max(0.5, v))
                 cr.stroke()
             cr.restore()
+    def _draw_overlay(self, cr, w, h):
+        x0, aw = self._area()
         # zaznaczenie
         if self.selection:
             obj, a, b = self.selection

@@ -69,6 +69,8 @@ class VocalPage(Gtk.Box):
         self.backing = None
         self._offset_src = {}
         self.clipboard = None              # (ścieżka źródłowa, od, do) – sekundy czasu ścieżki
+        self._quiet = 0                    # >0: zmiana z osi czasu / cofania – suwak nie zapisuje jej drugi raz
+        self._pend = {}                    # (rodzaj, id) -> (obiekt, wartość przed zmianą, timer)
         self._undo = []                    # (rodzaj, obiekt, poprzednia wartość) – Ctrl+Z cofa ostatnią zmianę
         self.fs = None
         self.album_preset = "studio"
@@ -395,6 +397,13 @@ class VocalPage(Gtk.Box):
         if self.busy:
             return
         if act == "undo":
+            for key, (_o, _old, src) in list(self._pend.items()):       # dokończ zapis trwającej zmiany
+                GLib.source_remove(src)
+                self._pend.pop(key)
+                kind = key[0]
+                cur = {"volume": "volume_db", "fx": "fx", "offset": "offset_ms"}[kind]
+                if getattr(_o, cur) != _old:
+                    self._undo.append((kind, _o, _old))
             while self._undo:
                 kind, obj, old = self._undo.pop()
                 if obj is not self.backing and obj not in self.tracks:
@@ -408,6 +417,10 @@ class VocalPage(Gtk.Box):
                     self._tl_offset(obj, old)
                 elif kind == "volume":
                     self._tl_volume(obj, old)
+                elif kind == "fx":
+                    self._quiet += 1
+                    obj.w["fx"].set_value(old)
+                    self._quiet -= 1
                 elif kind == "mute":
                     self._tl_mute(obj, old)
                 elif kind == "solo":
@@ -478,12 +491,34 @@ class VocalPage(Gtk.Box):
             return False
         fut.add_done_callback(lambda f: GLib.idle_add(done, f))
 
+    def _note(self, kind, obj, old):
+        """Zmiana suwakiem na karcie -> do cofania (Ctrl+Z). Przeciąganie suwaka to jedna zmiana:
+        zapis 600 ms po ostatnim ruchu, z wartością sprzed pierwszego ruchu."""
+        if self._quiet:
+            return
+        key = (kind, id(obj))
+        o, first, src = self._pend.get(key, (obj, old, 0))
+        if src:
+            GLib.source_remove(src)
+
+        def commit():
+            self._pend.pop(key, None)
+            cur = {"volume": "volume_db", "fx": "fx", "offset": "offset_ms"}[kind]
+            if getattr(obj, cur) != first:
+                self._undo.append((kind, obj, first))
+            return False
+        self._pend[key] = (obj, first, GLib.timeout_add(600, commit))
+
     def _tl_volume(self, obj, db):
         """Pokrętło na osi czasu -> ten sam suwak „Głośność” (on zmienia mikser na żywo)."""
-        if obj is self.backing:
-            self.bk_vol.set_value(db)
-        elif obj in self.tracks and obj.w:
-            obj.w["vol"].set_value(db)
+        self._quiet += 1
+        try:
+            if obj is self.backing:
+                self.bk_vol.set_value(db)
+            elif obj in self.tracks and obj.w:
+                obj.w["vol"].set_value(db)
+        finally:
+            self._quiet -= 1
 
     def _tl_mute(self, obj, on):
         """Przycisk M na osi czasu -> ten sam przycisk wyciszenia co na karcie ścieżki / podkładu."""
@@ -502,10 +537,14 @@ class VocalPage(Gtk.Box):
 
     def _tl_offset(self, obj, ms):
         """Klip przeciągnięty na osi czasu -> to samo pole co suwak „Przesunięcie” (ono przelicza dźwięk)."""
-        if obj is self.backing:
-            self.bk_of_spin.set_value(ms)
-        elif obj in self.tracks and obj.w:
-            obj.w["of_spin"].set_value(ms)
+        self._quiet += 1
+        try:
+            if obj is self.backing:
+                self.bk_of_spin.set_value(ms)
+            elif obj in self.tracks and obj.w:
+                obj.w["of_spin"].set_value(ms)
+        finally:
+            self._quiet -= 1
 
     # ---------------------------------------------------------------- podkład
     def _backing_group(self):
@@ -568,6 +607,7 @@ class VocalPage(Gtk.Box):
         b = self.backing
         if not b:
             return
+        self._note("offset", b, b.offset_ms)
         b.offset_ms = round(sp.get_value())
         if round(self.bk_of.get_value()) != b.offset_ms:
             self.bk_of.set_value(b.offset_ms)
@@ -667,6 +707,7 @@ class VocalPage(Gtk.Box):
 
     def _on_bk_volume(self, sc):
         if self.backing:
+            self._note("volume", self.backing, self.backing.volume_db)
             self.backing.volume_db = round(sc.get_value() * 2) / 2
             self.bk_vol_v.set_text(f"{num(self.backing.volume_db, '+.1f')} dB")
             self.mixer.update_volumes()
@@ -951,6 +992,7 @@ class VocalPage(Gtk.Box):
         return False
 
     def _on_offset(self, sp, t):
+        self._note("offset", t, t.offset_ms)
         t.offset_ms = round(sp.get_value())
         if round(t.w["of"].get_value()) != t.offset_ms:
             t.w["of"].set_value(t.offset_ms)
@@ -967,6 +1009,15 @@ class VocalPage(Gtk.Box):
         self._offset_src[id(t)] = GLib.timeout_add(450, go)
 
     def _remix(self):
+        """Przebudowa potoku GStreamer – zebrana w jedną, gdy kilka ścieżek kończy się naraz (14 ścieżek =
+        14 przebudów 28 źródeł; teraz jedna po 150 ms)."""
+        if getattr(self, "_remix_src", 0):
+            GLib.source_remove(self._remix_src)
+        self._remix_src = GLib.timeout_add(150, self._remix_now)
+        self._update()
+
+    def _remix_now(self):
+        self._remix_src = 0
         extra = [self.backing] if self.backing and self.backing.dry else []
         self.mixer.set_tracks(self.tracks + extra)
         n = len([t for t in self.tracks if t.dry])
@@ -996,6 +1047,7 @@ class VocalPage(Gtk.Box):
         self._render(t)
 
     def _on_volume(self, s, t):
+        self._note("volume", t, t.volume_db)
         t.volume_db = round(s.get_value() * 2) / 2
         self._label_values(t)
         self.mixer.update_volumes()
@@ -1010,6 +1062,7 @@ class VocalPage(Gtk.Box):
         self.win.toast(tr("level_all_done"))
 
     def _on_fx(self, s, t):
+        self._note("fx", t, t.fx)
         t.fx = s.get_value()
         self._label_values(t)
         self.mixer.update_volumes()

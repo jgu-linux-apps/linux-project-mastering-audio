@@ -728,6 +728,14 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'tl_undone_fx': 'Cofnięto zmianę pogłosu / echa',
+})
+S["en"].update({
+    'tl_undone_fx': 'Reverb / echo change undone',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:

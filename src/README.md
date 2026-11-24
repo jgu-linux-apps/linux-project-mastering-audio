@@ -196,6 +196,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.9.0** – faster: the timeline keeps its waveform layer and redraws only the playback cursor (about 200× less work while playing), the mixer is rebuilt once when several tracks finish together; Ctrl+Z works anywhere in the Vocals tab and also undoes the Volume, Reverb / echo and Offset sliders on the track cards; slider handles are straight bars again.
 - **0.8.14** – sliders have bar-shaped handles (easier to grab); the mouse wheel over a slider or number field scrolls the page instead of changing the value.
 - **0.8.13** – timeline: clips can be dragged anywhere on the lane (offset up to ±10 minutes instead of ±2 s).
 - **0.8.12** – desktop entry without `TryExec`, so the Ubuntu dock (a snap that cannot see /usr/bin) lists the app again.
