@@ -37,6 +37,9 @@ class Timeline(AlbumChart):
         super().__init__()
         self.on_mute, self.on_solo = on_mute, on_solo
         self.on_trim = None              # (ścieżka, od, do) – przycięcie klipu za krawędź
+        self.base_h, self.focus_mode, self.custom_h = 80, False, {}   # wysokości torów (px)
+        self.on_heights = None
+        self._row_drag = None
         self._trim = None
         self.on_commit = None            # (rodzaj, obiekt, poprzednia wartość) – do cofania Ctrl+Z
         self.on_offset, self.on_seek, self.on_action, self.on_volume = on_offset, on_seek, on_action, on_volume
@@ -108,7 +111,7 @@ class Timeline(AlbumChart):
             self.queue_draw()
 
     def _resize(self):
-        self.set_content_height(RULER_H + max(1, len(self.lanes)) * (LANE_H + GAP) + 4)
+        self.set_content_height(int(self._row_y(len(self.lanes))) + 4)
 
     # ---------------------------------------------------------------- geometria
     def _total(self):
@@ -134,12 +137,64 @@ class Timeline(AlbumChart):
         start, length = self._win()
         return start + (x - x0) / w * length
 
+    # ---------------------------------------------------------------- wysokości torów
+    def _h(self, i):
+        """Wysokość toru: własna (przeciągnięta krawędź) > tryb „zaznaczony większy” > wspólna."""
+        if not 0 <= i < len(self.lanes):
+            return self.base_h
+        obj = self.lanes[i].obj
+        if id(obj) in self.custom_h:
+            return self.custom_h[id(obj)]
+        if self.focus_mode:
+            sel = getattr(self.selected, "parent", None) or self.selected
+            return max(self.base_h, 130) if obj is sel else min(self.base_h, 40)
+        return self.base_h
+
+    def _row_y(self, i):
+        y = RULER_H
+        for k in range(min(i, len(self.lanes))):
+            y += self._h(k) + GAP
+        return y
+
+    def _row_index(self, y):
+        if y < RULER_H:
+            return None
+        acc = RULER_H
+        for k in range(len(self.lanes)):
+            h = self._h(k)
+            if acc <= y < acc + h + GAP:
+                return k
+            acc += h + GAP
+        return None
+
+    def _row_edge(self, y):
+        """Dolna krawędź toru (±4 px) -> numer toru (zmiana wysokości przeciąganiem)."""
+        acc = RULER_H
+        for k in range(len(self.lanes)):
+            acc += self._h(k)
+            if abs(y - acc) <= 4:
+                return k
+            acc += GAP
+        return None
+
+    def set_heights(self, base=None, focus=None, custom=None):
+        if base is not None:
+            self.base_h = int(base)
+        if focus is not None:
+            self.focus_mode = bool(focus)
+        if custom is not None:
+            self.custom_h = dict(custom)
+        self._resize()
+        self.queue_draw()
+        if self.on_heights:
+            self.on_heights()
+
     def _lane_at(self, y):
-        i = int((y - RULER_H) // (LANE_H + GAP))
-        return self.lanes[i] if y >= RULER_H and 0 <= i < len(self.lanes) else None
+        i = self._row_index(y)
+        return self.lanes[i] if i is not None else None
 
     def _knob_xy(self, i):
-        return LABEL_W - KNOB_R - 8, RULER_H + i * (LANE_H + GAP) + LANE_H / 2
+        return LABEL_W - KNOB_R - 8, self._row_y(i) + self._h(i) / 2
 
     def _mute_rect(self, i):
         kx, ky = self._knob_xy(i)
@@ -262,6 +317,12 @@ class Timeline(AlbumChart):
 
     def _pressed(self, gesture, n, x, y):
         self.grab_focus()
+        er = self._row_edge(y)
+        if er is not None:
+            if n == 2:
+                self.custom_h.pop(id(self.lanes[er].obj), None)
+                self.set_heights()
+            return
         solo = self._solo_hit(x, y)
         if solo:
             if self.on_solo:
@@ -298,6 +359,8 @@ class Timeline(AlbumChart):
             return
         lane = self._clip_hit(x, y)
         self.selected = lane.obj if lane else None
+        if self.focus_mode:
+            self._resize()
         if lane and n == 2:
             self._set(lane, 0.0, final=True)
             gesture.set_state(Gtk.EventSequenceState.CLAIMED)
@@ -305,6 +368,11 @@ class Timeline(AlbumChart):
 
     def _begin(self, g, x, y):
         self._knob = None
+        edge_row = self._row_edge(y) if g.get_current_button() == 1 else None
+        if edge_row is not None:                                  # dolna krawędź toru: zmiana wysokości
+            self._row_drag = (edge_row, self._h(edge_row))
+            self._drag = None
+            return
         if y < RULER_H:
             return
         btn = g.get_current_button()
@@ -345,6 +413,13 @@ class Timeline(AlbumChart):
 
     def _update(self, g, dx, _dy):
         ok, sx, _sy = g.get_start_point()
+        if self._row_drag:
+            i, h0 = self._row_drag
+            _ok, _x, ddy = g.get_offset()
+            self.custom_h[id(self.lanes[i].obj)] = int(max(30, min(220, h0 + ddy)))
+            self._resize()
+            self.queue_draw()
+            return
         if self._knob:
             lane, start = self._knob
             _ok, _x, dy = g.get_offset()
@@ -368,7 +443,8 @@ class Timeline(AlbumChart):
             i0, t0 = self._sel_drag                              # przeciąganie w poprzek torów = kilka ścieżek
             _ok, _sx, sy = g.get_start_point()
             _ok, _dx, dy = g.get_offset()
-            i1 = int((sy + dy - RULER_H) // (LANE_H + GAP))
+            i1 = self._row_index(sy + dy)
+            i1 = (0 if sy + dy < RULER_H else len(self.lanes) - 1) if i1 is None else i1
             i1 = max(0, min(len(self.lanes) - 1, i1))
             lo, hi = sorted((i0, i1))
             objs = tuple(ln.obj for ln in self.lanes[lo:hi + 1] if ln.kind == "vocal")
@@ -394,6 +470,11 @@ class Timeline(AlbumChart):
             self.queue_draw()
 
     def _end(self, _g, _dx, _dy):
+        if self._row_drag:
+            self._row_drag = None
+            if self.on_heights:
+                self.on_heights()
+            return
         if self._trim:
             tr, self._trim = self._trim, None
             if abs(tr["s"] - tr["s0"]) > 1e-3 or abs(tr["e"] - tr["e0"]) > 1e-3:
@@ -443,7 +524,7 @@ class Timeline(AlbumChart):
         name = "grab" if self._clip_hit(x, y) else "pointer" if (y < RULER_H and x >= LABEL_W) else "default"
         if self.tool == "move" and (self._edge_hit(x, y) or self._trim):
             name = "ew-resize"
-        if self._knob_hit(x, y) or self._knob:
+        if self._knob_hit(x, y) or self._knob or self._row_edge(y) is not None or self._row_drag:
             name = "ns-resize"
         if self._mute_hit(x, y) or self._solo_hit(x, y):
             name = "pointer"
@@ -457,6 +538,10 @@ class Timeline(AlbumChart):
         state = ctl.get_current_event_state()
         ev = ctl.get_current_event()
         ok, px, py = ev.get_position() if ev else (False, 0, 0)
+        both = Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK
+        if state & both == both and dy:                            # Ctrl+Shift+kółko: wysokość wszystkich torów
+            self.set_heights(base=max(30, min(200, self.base_h + (-10 if dy > 0 else 10))))
+            return True
         if ok and px < LABEL_W and not state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK):
             lane = self._lane_at(py)                             # kółko nad nazwą ścieżki = głośność ±0,5 dB
             if lane and hasattr(lane.obj, "volume_db") and dy:
@@ -549,8 +634,8 @@ class Timeline(AlbumChart):
         db = lane.obj.volume_db
         mute = getattr(lane.obj, "mute", False)
         kx, ky = self._knob_xy(i)
-        y = RULER_H + i * (LANE_H + GAP)
-        self._text(cr, 6, y + LANE_H / 2 + 12, _minus(f"{db:+.1f} dB").replace(".", ","), 9, "left",
+        y, LH = self._row_y(i), self._h(i)
+        self._text(cr, 6, y + LH / 2 + 12, _minus(f"{db:+.1f} dB").replace(".", ","), 9, "left",
                    0.35 if mute else 0.85 if abs(db) >= 0.25 else 0.5)
         self._toggle_btn(cr, self._solo_rect(i), "S", getattr(lane.obj, "solo", False), (0.96, 0.75, 0.15),
                          (0.17, 0.12, 0.0))
@@ -593,7 +678,7 @@ class Timeline(AlbumChart):
         lanes = tuple((id(ln.obj), id(ln.peaks), ln.duration, ln.name, ln.obj.offset_ms, self._extent(ln),
                        getattr(ln.obj, "volume_db", 0), getattr(ln.obj, "mute", False),
                        getattr(ln.obj, "solo", False), ln.obj is self.selected) for ln in self.lanes + self.clips)
-        return (w, h, self._win(), lanes, themes.CURRENT, Adw.StyleManager.get_default().get_dark(),
+        return (w, h, self._win(), lanes, tuple(self._h(i) for i in range(len(self.lanes))), themes.CURRENT, Adw.StyleManager.get_default().get_dark(),
                 self.get_scale_factor(), str(self.get_color()))
 
     def _draw(self, _area, cr, w, h):
@@ -628,17 +713,17 @@ class Timeline(AlbumChart):
         self._text(cr, w - 6, RULER_H - 8, "offset", 9, "right", 0.45)
         rr = themes.palette()["radius"]
         for i, lane in enumerate(self.lanes):
-            y = RULER_H + i * (LANE_H + GAP)
+            y, LH = self._row_y(i), self._h(i)
             self._fg(cr, 0.05)
-            self._bar(cr, x0, y + LANE_H, y, aw, 4)
+            self._bar(cr, x0, y + LH, y, aw, 4)
             sel = lane.obj is self.selected
-            self._text(cr, 6, y + LANE_H / 2 - 2, lane.name[:22], 10, "left", 0.9 if sel else 0.75, bold=sel)
+            self._text(cr, 6, y + LH / 2 - 2, lane.name[:22], 10, "left", 0.9 if sel else 0.75, bold=sel)
             self._knob_draw(cr, i, lane)
             off = lane.obj.offset_ms
-            self._text(cr, w - 6, y + LANE_H / 2 + 4, _minus(f"{off:+.0f} ms") if abs(off) >= 0.5 else "0 ms", 10,
+            self._text(cr, w - 6, y + LH / 2 + 4, _minus(f"{off:+.0f} ms") if abs(off) >= 0.5 else "0 ms", 10,
                        "right", 0.9 if abs(off) >= 0.5 else 0.5)
             if not lane.duration:
-                self._text(cr, x0 + 8, y + LANE_H / 2 + 4, "…", 10, "left", 0.5)
+                self._text(cr, x0 + 8, y + LH / 2 + 4, "…", 10, "left", 0.5)
                 continue
             for lane in [lane] + [c for c in self.clips if c.parent is lane]:   # tor: ścieżka + jej klipy
                 sel = lane.obj is self.selected
@@ -654,17 +739,17 @@ class Timeline(AlbumChart):
                 if cb <= ca:
                     continue
                 cr.save()
-                cr.rectangle(x0, y, aw, LANE_H)
+                cr.rectangle(x0, y, aw, LH)
                 cr.clip()
                 cr.set_source_rgba(*rgb, (0.16 if sel else 0.08) if light else (0.22 if sel else 0.14))
-                self._bar(cr, a, y + LANE_H - 2, y + 2, b - a, min(rr, 5))
+                self._bar(cr, a, y + LH - 2, y + 2, b - a, min(rr, 5))
                 cr.set_source_rgba(*ink, 1.0 if sel else 0.55)
                 cr.set_line_width(2 if sel else 1)
-                self._bar(cr, a + 0.5, y + LANE_H - 2.5, y + 2.5, b - a - 1, min(rr, 5), fill=False)
+                self._bar(cr, a + 0.5, y + LH - 2.5, y + 2.5, b - a - 1, min(rr, 5), fill=False)
                 cr.stroke()
                 if lane.peaks is not None and len(lane.peaks):     # fala: jedna kreska na piksel, z suwakiem głośności
-                    mid = y + LANE_H / 2
-                    amp = (LANE_H / 2 - 5) * DISPLAY_GAIN * 10 ** (getattr(lane.obj, "volume_db", 0.0) / 20)
+                    mid = y + LH / 2
+                    amp = (LH / 2 - 5) * DISPLAY_GAIN * 10 ** (getattr(lane.obj, "volume_db", 0.0) / 20)
                     if getattr(lane.obj, "mute", False):
                         amp = 0.0
                     elif self._any_solo() and not getattr(lane.obj, "solo", False):
@@ -678,7 +763,7 @@ class Timeline(AlbumChart):
                         i0, i1 = int(t0 / PEAK_HOP_S), int(math.ceil(t1 / PEAK_HOP_S))
                         if i1 <= 0 or i0 >= n:
                             continue
-                        v = min(LANE_H / 2 - 3, float(lane.peaks[max(0, i0):max(i0 + 1, min(n, i1))].max()) * amp)
+                        v = min(LH / 2 - 3, float(lane.peaks[max(0, i0):max(i0 + 1, min(n, i1))].max()) * amp)
                         cr.move_to(px + 0.5, mid - max(0.5, v))
                         cr.line_to(px + 0.5, mid + max(0.5, v))
                     cr.stroke()
@@ -691,16 +776,16 @@ class Timeline(AlbumChart):
             first = True
             for i, lane in enumerate(self.lanes):
                 if lane.obj in objs:
-                    y = RULER_H + i * (LANE_H + GAP)
+                    y, LH = self._row_y(i), self._h(i)
                     xa, xb = max(x0, self._x(a)), min(x0 + aw, self._x(b))
                     if xb > xa:
                         light = not Adw.StyleManager.get_default().get_dark()
                         cr.set_source_rgba(*((0.85, 0.35, 0.19, 0.12) if light else (1.0, 1.0, 1.0, 0.28)))
-                        cr.rectangle(xa, y, xb - xa, LANE_H)
+                        cr.rectangle(xa, y, xb - xa, LH)
                         cr.fill()
                         cr.set_source_rgba(0.85, 0.35, 0.19, 0.9)
                         cr.set_line_width(1)
-                        cr.rectangle(xa + 0.5, y + 0.5, xb - xa - 1, LANE_H - 1)
+                        cr.rectangle(xa + 0.5, y + 0.5, xb - xa - 1, LH - 1)
                         cr.stroke()
                         if first:
                             lab = f"{int(a // 60)}:{a % 60:06.3f} – {int(b // 60)}:{b % 60:06.3f} · {b - a:.3f} s"

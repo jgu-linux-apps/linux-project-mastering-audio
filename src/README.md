@@ -78,6 +78,9 @@ It is not another Audacity – just what you need. The interface is available in
    detected tempo and the chosen style / length, added as a new **Sample** track at the cursor.
    **Right-click** on the timeline opens a menu: Cut, Copy, Paste, Silence, Scratch… and **Delete** (the clip, the track
    or the backing track); Ctrl+Z brings a deleted track / clip back and also undoes adding a scratch preset track.
+   **Lane height** (toolbar): Small / Medium / Large (40 / 80 / 130 px, also Ctrl+Shift+wheel); drag a lane's bottom edge
+   to resize just that lane (double-click it for the default); **Selected larger** makes the lane you work on large and the
+   others narrow, like in Audacity. Heights are saved in the project.
    **Trim a clip:** with the Move tool, grab the left / right edge of a clip (the cursor turns into ↔) and drag it in –
    the audio outside the frame is removed (with short fades), leaving room to paste something right next to it.
    **Several tracks at once:** drag the selection up / down across lanes – Copy / Cut take the part from every selected
@@ -219,6 +222,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.15.0** – taller timeline lanes like in Audacity: Small / Medium / Large (default Medium, 80 px), drag a lane's bottom edge to resize it, “Selected larger” mode, Ctrl+Shift+wheel; saved in the project.
 - **0.14.2** – Delete removes the selection instead of silencing it: clips inside are deleted, touched clips are trimmed or split (the track itself gets silence); Cut works the same after copying; M silences; one Ctrl+Z undoes it.
 - **0.14.1** – fix: dragging one of several selected clips (e.g. pasted choruses) moves all selected clips together again (grab a clip → the selected clips move, grab a track → the selected tracks move); preset scratches are much softer (no harsh top end, soft tone instead of 1 kHz, −6 dBFS).
 - **0.14.0** – scratch genres and patterns: **RAP / HIP-HOP** library (boom bap baby, chirps, transformer, tear, flare, scribble, drop) on a 16th-note grid; beat grid detection (tempo, phase, “one”) so preset scratches land exactly on the nearest bar.

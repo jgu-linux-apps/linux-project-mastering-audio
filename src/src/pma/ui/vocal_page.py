@@ -304,6 +304,7 @@ class VocalPage(Gtk.Box):
                                  on_mute=self._tl_mute, on_solo=self._tl_solo)
         self.timeline.on_commit = lambda kind, obj, old: self._push_undo((kind, obj, old))
         self.timeline.on_context = self._tl_context
+        self.timeline.on_heights = lambda: None
         self.timeline.on_trim = lambda t, a, b: t in self._all() and self._edit(t, ["trim", a, b])
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class("card")
@@ -447,6 +448,25 @@ class VocalPage(Gtk.Box):
             bar.append(btn(icon, tr(key + "_tip"), lambda act=act: self.tl_action(act), tr(key)))
         bar.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
         bar.append(btn("media-playlist-shuffle-symbolic", tr("sc_tip"), lambda: self.scratch_dialog(), tr("sc_btn")))
+        bar.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
+        hs = Gtk.Box()
+        hs.add_css_class("linked")
+        self._h_btns = {}
+        first = None
+        for h, key in ((40, "tl_h_s"), (80, "tl_h_m"), (130, "tl_h_l")):
+            b = Gtk.ToggleButton(label=tr(key), tooltip_text=tr("tl_h_tip"), active=(h == 80))
+            if first:
+                b.set_group(first)
+            else:
+                first = b
+            b.connect("toggled", lambda btn, h=h: btn.get_active() and self.timeline.base_h != h
+                      and self.timeline.set_heights(base=h, custom={}))
+            self._h_btns[h] = b
+            hs.append(b)
+        bar.append(hs)
+        self.tl_focus = Gtk.CheckButton(label=tr("tl_focus"), tooltip_text=tr("tl_focus_tip"))
+        self.tl_focus.connect("toggled", lambda b: self.timeline.set_heights(focus=b.get_active()))
+        bar.append(self.tl_focus)
         sp = Gtk.Box(hexpand=True)
         bar.append(sp)
         for icon, tip, f in (("zoom-out-symbolic", tr("tl_zoom_out"), 1.25), ("zoom-in-symbolic", tr("tl_zoom_in"), 0.8),
@@ -1636,7 +1656,10 @@ class VocalPage(Gtk.Box):
     # ================================================================ projekt
     def get_state(self):
         b = self.backing
-        return dict(preset=self.album_preset, manual=dict(self.manual),
+        tl = self.timeline
+        heights = dict(base=tl.base_h, focus=tl.focus_mode,
+                       custom={t.path: tl.custom_h[id(t)] for t in self.tracks if id(t) in tl.custom_h})
+        return dict(preset=self.album_preset, manual=dict(self.manual), heights=heights,
                     tracks=[dict(path=t.path, preset=t.preset, volume_db=t.volume_db, fx=t.fx, mute=t.mute,
                                  offset_ms=t.offset_ms, ops=[list(op) for op in t.ops],
                                  clips=[dict(path=c.path, preset=c.preset, offset_ms=c.offset_ms,
@@ -1689,6 +1712,14 @@ class VocalPage(Gtk.Box):
                     t.clips.append(c)
             new.append(t)
         self.tracks = sorted(new, key=lambda t: os.path.basename(t.path).lower())[:MAX_TRACKS]
+        hd = d.get("heights") or {}
+        by_path = {t.path: t for t in self.tracks}
+        base = int(hd.get("base", 80))
+        if base in self._h_btns:
+            self._h_btns[base].set_active(True)
+        self.tl_focus.set_active(bool(hd.get("focus")))
+        self.timeline.set_heights(base=base, custom={id(by_path[p]): int(h) for p, h in (hd.get("custom") or {}).items()
+                                                     if p in by_path})
         self._rebuild()
         for t in self._all():
             self._render(t)

@@ -930,6 +930,24 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'tl_h_s': 'Mała',
+    'tl_h_m': 'Średnia',
+    'tl_h_l': 'Duża',
+    'tl_h_tip': 'Wysokość wszystkich torów (Ctrl+Shift+kółko). Jeden tor: przeciągnij jego dolną krawędź, podwójny klik = domyślna',
+    'tl_focus': 'Zaznaczony większy',
+    'tl_focus_tip': 'Tor, nad którym pracujesz, jest duży, pozostałe wąskie – jak w Audacity',
+})
+S["en"].update({
+    'tl_h_s': 'Small',
+    'tl_h_m': 'Medium',
+    'tl_h_l': 'Large',
+    'tl_h_tip': 'Height of all lanes (Ctrl+Shift+wheel). One lane: drag its bottom edge, double-click = default',
+    'tl_focus': 'Selected larger',
+    'tl_focus_tip': 'The lane you work on is large, the others narrow – like in Audacity',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:
