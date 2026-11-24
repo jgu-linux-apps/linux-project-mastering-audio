@@ -6,7 +6,6 @@ GenericName[pl]=Mastering albumu
 Comment=Simple mastering and loudness matching for a whole album
 Comment[pl]=Prosty mastering i wyrównanie głośności całego albumu
 Exec=linux-project-mastering-audio %F
-TryExec=linux-project-mastering-audio
 Icon=io.github.jaro.LinuxProjectMasteringAudio
 Terminal=false
 Categories=AudioVideo;Audio;
