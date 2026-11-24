@@ -71,6 +71,8 @@ It is not another Audacity – just what you need. The interface is available in
    selection. To scratch a piece of another song, add it as a track with the **Sample** option (no processing).
    **Scratch presets** (no vocal needed): “Aaah”, Stab, “Fresh”, 1 kHz tone or Kick – synthesized sounds scratched in the
    detected tempo and the chosen style / length, added as a new **Sample** track at the cursor.
+   **Right-click** on the timeline opens a menu: Cut, Copy, Paste, Silence, Scratch… and **Delete** (the clip, the track
+   or the backing track); Ctrl+Z brings a deleted track / clip back and also undoes adding a scratch preset track.
    **Trim a clip:** with the Move tool, grab the left / right edge of a clip (the cursor turns into ↔) and drag it in –
    the audio outside the frame is removed (with short fades), leaving room to paste something right next to it.
    **Several tracks at once:** drag the selection up / down across lanes – Copy / Cut take the part from every selected
@@ -212,6 +214,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.13.1** – right-click menu on the timeline (Cut, Copy, Paste, Silence, Scratch…, Delete clip / track); Ctrl+Z undoes adding a scratch preset track and deleting a track.
 - **0.13.0** – scratch presets: ready synthesized sounds (“Aaah”, Stab, “Fresh”, 1 kHz tone, Kick) scratched in the beat's tempo and added as a new Sample track at the cursor – no vocal needed.
 - **0.12.3** – fix: tracks with clips could stay empty after opening a project (two workers wrote the same temporary file); live listening has automatic headroom, so many vocals + the beat no longer clip (the whole mix is turned down evenly, the vocal / beat balance stays).
 - **0.12.2** – fix: a pasted clip contains exactly what was heard in the copied selection, including earlier edits (pastes, scratches, silences) – it could come out empty before.

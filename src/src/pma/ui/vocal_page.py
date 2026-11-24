@@ -303,6 +303,7 @@ class VocalPage(Gtk.Box):
                                  on_action=self.tl_action, on_volume=self._tl_volume,
                                  on_mute=self._tl_mute, on_solo=self._tl_solo)
         self.timeline.on_commit = lambda kind, obj, old: self._push_undo((kind, obj, old))
+        self.timeline.on_context = self._tl_context
         self.timeline.on_trim = lambda t, a, b: t in self._all() and self._edit(t, ["trim", a, b])
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class("card")
@@ -349,6 +350,58 @@ class VocalPage(Gtk.Box):
         if tl.view[1] > 0:
             tl.view = (adj.get_value(), tl.view[1])
             tl.queue_draw()
+
+    def _tl_context(self, obj, x, y):
+        """Menu pod prawym przyciskiem na osi czasu."""
+        ag = Gio.SimpleActionGroup()
+
+        def add(name, cb, enabled=True):
+            a = Gio.SimpleAction.new(name, None)
+            a.connect("activate", lambda *_: cb())
+            a.set_enabled(enabled)
+            ag.add_action(a)
+        has_sel = bool(self.timeline.selection)
+        add("cut", lambda: self.tl_action("cut"), has_sel)
+        add("copy", lambda: self.tl_action("copy"), has_sel)
+        add("paste", lambda: self.tl_action("paste"), bool(self.clipboard))
+        add("silence", lambda: self.tl_action("silence"), has_sel)
+        add("scratch", self.scratch_dialog)
+        add("delete", lambda: self._ctx_delete(obj), obj is not self.backing)
+        add("delete_bk", lambda: self.set_backing(None), obj is self.backing)
+        menu = Gio.Menu()
+        edit = Gio.Menu()
+        for key, act in (("tl_cut", "cut"), ("tl_copy", "copy"), ("tl_paste", "paste"), ("tl_silence", "silence")):
+            edit.append(tr(key), "tl." + act)
+        menu.append_section(None, edit)
+        sc = Gio.Menu()
+        sc.append(tr("sc_btn") + "…", "tl.scratch")
+        menu.append_section(None, sc)
+        rm = Gio.Menu()
+        if obj is self.backing:
+            rm.append(tr("ctx_delete_bk"), "tl.delete_bk")
+        else:
+            rm.append(tr("ctx_delete_clip") if isinstance(obj, Clip) else tr("ctx_delete_track"), "tl.delete")
+        menu.append_section(None, rm)
+        pop = Gtk.PopoverMenu.new_from_model(menu)
+        pop.insert_action_group("tl", ag)
+        pop.set_parent(self.timeline)
+        r = Gdk.Rectangle()
+        r.x, r.y, r.width, r.height = int(x), int(y), 1, 1
+        pop.set_pointing_to(r)
+        pop.set_has_arrow(False)
+        pop.connect("closed", lambda p: GLib.idle_add(p.unparent))
+        pop.popup()
+
+    def _ctx_delete(self, obj):
+        if isinstance(obj, Clip):
+            if obj in obj.parent.clips:
+                obj.parent.clips.remove(obj)
+                self._push_undo(("clip_del", (obj,), None))
+                self._clips_changed()
+                self.win.toast(tr("tl_clip_deleted"))
+        elif obj in self.tracks:
+            self.remove(obj)
+            self.win.toast(tr("ctx_track_deleted", name=os.path.basename(obj.path)))
 
     def _tl_toolbar(self):
         bar = Gtk.Box(spacing=6)
@@ -478,6 +531,19 @@ class VocalPage(Gtk.Box):
                     L.log(f"cofnięto edycję ({len(tracks)} {plural(len(tracks), 'stem', 'pl')})", tag="edit")
                     self.win.toast(tr("tl_undone_ops"))
                     self.timeline.queue_draw()
+                    return
+                if kind == "track_add":                                  # cofnij dodanie ścieżki (skrecz z presetu)
+                    if obj in self.tracks:
+                        self.remove(obj, undo=False)
+                    self.win.toast(tr("tl_undone_track_add"))
+                    return
+                if kind == "track_del":                                  # przywróć usuniętą ścieżkę
+                    if obj not in self.tracks:
+                        self.tracks.insert(min(old, len(self.tracks)), obj)
+                        self._rebuild()
+                        self._remix()
+                        self._update()
+                    self.win.toast(tr("tl_undone_track_del"))
                     return
                 if kind == "clip_add":                                   # cofnij wklejenie klipów
                     for c in obj:
@@ -671,6 +737,7 @@ class VocalPage(Gtk.Box):
         t = VTrack(path, "sample")
         t.offset_ms = round(at * 1000)
         self.tracks.append(t)
+        self._push_undo(("track_add", t, None))
         self._rebuild()
         self._render(t)
         self._update()
@@ -1140,9 +1207,11 @@ class VocalPage(Gtk.Box):
             self._render(t)
         self._update()
 
-    def remove(self, t):
+    def remove(self, t, undo=True):
         if self.busy:
             return
+        if undo:
+            self._push_undo(("track_del", t, self.tracks.index(t)))
         self.tracks.remove(t)
         if not self.tracks and not self.backing:
             self.fs = None

@@ -850,6 +850,24 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'tl_undone_track_add': 'Cofnięto dodanie ścieżki',
+    'tl_undone_track_del': 'Przywrócono usuniętą ścieżkę',
+    'ctx_delete_clip': 'Usuń klip',
+    'ctx_delete_track': 'Usuń ścieżkę',
+    'ctx_delete_bk': 'Usuń podkład',
+    'ctx_track_deleted': 'Usunięto ścieżkę {name} (Ctrl+Z przywraca)',
+})
+S["en"].update({
+    'tl_undone_track_add': 'Track addition undone',
+    'tl_undone_track_del': 'Deleted track restored',
+    'ctx_delete_clip': 'Delete clip',
+    'ctx_delete_track': 'Delete track',
+    'ctx_delete_bk': 'Remove backing track',
+    'ctx_track_deleted': 'Deleted track {name} (Ctrl+Z brings it back)',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:

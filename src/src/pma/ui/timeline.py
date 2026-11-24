@@ -65,6 +65,10 @@ class Timeline(AlbumChart):
         click = Gtk.GestureClick()
         click.connect("pressed", self._pressed)
         self.add_controller(click)
+        rclick = Gtk.GestureClick(button=3)                      # prawy przycisk: menu (Usuń, Wytnij…)
+        rclick.connect("pressed", self._context)
+        self.add_controller(rclick)
+        self.on_context = None
         motion = Gtk.EventControllerMotion()
         motion.connect("motion", self._hover)
         self.add_controller(motion)
@@ -223,6 +227,17 @@ class Timeline(AlbumChart):
         return None
 
     # ---------------------------------------------------------------- zdarzenia
+    def _context(self, _g, _n, x, y):
+        self.grab_focus()
+        lane = self._clip_hit(x, y) or self._lane_at(y)
+        if lane is None or not self.on_context:
+            return
+        sel = self.selection
+        if not (sel and lane.obj in sel[0]):                     # klik poza zaznaczeniem -> wybierz ten klip / tor
+            self.selected = lane.obj
+            self.queue_draw()
+        self.on_context(lane.obj, x, y)
+
     def set_tool(self, tool):
         self.tool = tool
         self.queue_draw()
