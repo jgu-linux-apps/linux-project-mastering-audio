@@ -62,6 +62,9 @@ It is not another Audacity – just what you need. The interface is available in
    **Paste** (Ctrl+V – at the red cursor on the selected track, replacing what was there; e.g. duplicate a chorus),
    **Silence** (Delete / M – complete silence on the selection) and **Undo** (Ctrl+Z – also undoes moving a clip, the
    volume knob and the M button); Space plays / pauses.
+   **Scratch** (toolbar): DJ scratches made from the start of the selection (about one beat, e.g. the first syllable),
+   in time with the beat – the tempo is detected from the backing track (and can be adjusted); styles Baby, Chirp,
+   Transformer or Mix, 1–8 beats long; the scratch replaces the track from the start of the selection (Ctrl+Z undoes it).
    **Several tracks at once:** drag the selection up / down across lanes – Copy / Cut take the part from every selected
    track and Paste puts each back on its own track at the cursor, keeping their exact arrangement (Cut + Paste moves a
    whole block); one Ctrl+Z undoes the whole block.
@@ -199,6 +202,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.10.0** – Vocals: **Scratch** – DJ scratches from the start of a selection, synced to the tempo detected from the backing track (Baby, Chirp, Transformer, Mix; 1–8 beats).
 - **0.9.2** – the timeline toolbar is pinned at the top of the Vocals tab (always visible, like in Audacity); dragging a clip that is part of a multi-track selection moves all selected tracks together (one Ctrl+Z undoes it).
 - **0.9.1** – timeline: select several tracks at once (drag across lanes) and cut / copy / paste / silence them as one block, keeping their exact arrangement; one Ctrl+Z undoes the block.
 - **0.9.0** – faster: the timeline keeps its waveform layer and redraws only the playback cursor (about 200× less work while playing), the mixer is rebuilt once when several tracks finish together; Ctrl+Z works anywhere in the Vocals tab and also undoes the Volume, Reverb / echo and Offset sliders on the track cards; slider handles are straight bars again.

@@ -736,6 +736,48 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'sc_btn': 'Skrecz',
+    'sc_tip': 'Skrecze DJ z początku zaznaczenia, w tempie bitu',
+    'sc_need_sel': 'Najpierw zaznacz fragment wokalu (narzędzie „Zaznacz”) – skrecz powstanie z jego początku',
+    'sc_title': 'Skrecze',
+    'sc_body': 'Skrecz powstaje z początku zaznaczenia (ok. jedno uderzenie) i zastępuje fragment ścieżki od tego miejsca. Zacznij zaznaczenie na uderzeniu bitu.',
+    'sc_bpm': 'Tempo (BPM)',
+    'sc_style': 'Styl',
+    'sc_beats': 'Długość (uderzenia)',
+    'sc_apply': 'Zrób skrecz',
+    'sc_detecting': 'Wykrywanie tempa z podkładu…',
+    'sc_detected': 'Wykryte z podkładu – możesz poprawić',
+    'sc_manual': 'Nie udało się wykryć – wpisz tempo',
+    'sc_no_bk': 'Brak podkładu – wpisz tempo bitu',
+    'sc_done': 'Skrecz: {n} uderzeń · {bpm:.1f} BPM · {style}',
+    'sc_s_baby': 'Baby – tam i z powrotem',
+    'sc_s_chirp': 'Chirp – szybko, z crossfaderem',
+    'sc_s_transformer': 'Transformer – cięcia crossfaderem',
+    'sc_s_mix': 'Mix – wszystkie po kolei',
+})
+S["en"].update({
+    'sc_btn': 'Scratch',
+    'sc_tip': 'DJ scratches from the start of the selection, in time with the beat',
+    'sc_need_sel': 'Select part of a vocal first (Select tool) – the scratch is made from its start',
+    'sc_title': 'Scratches',
+    'sc_body': 'The scratch is made from the start of the selection (about one beat) and replaces the track from there. Start the selection on a beat.',
+    'sc_bpm': 'Tempo (BPM)',
+    'sc_style': 'Style',
+    'sc_beats': 'Length (beats)',
+    'sc_apply': 'Scratch it',
+    'sc_detecting': 'Detecting the tempo of the backing track…',
+    'sc_detected': 'Detected from the backing track – you can adjust it',
+    'sc_manual': 'Could not detect – enter the tempo',
+    'sc_no_bk': 'No backing track – enter the beat tempo',
+    'sc_done': 'Scratch: {n} beats · {bpm:.1f} BPM · {style}',
+    'sc_s_baby': 'Baby – back and forth',
+    'sc_s_chirp': 'Chirp – fast, with the crossfader',
+    'sc_s_transformer': 'Transformer – crossfader cuts',
+    'sc_s_mix': 'Mix – all in turn',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:

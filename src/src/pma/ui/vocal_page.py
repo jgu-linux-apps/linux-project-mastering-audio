@@ -11,6 +11,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
 import soundfile as sf  # noqa: E402
 
+from ..engine import scratch as SC  # noqa: E402
 from ..engine import vocal as V  # noqa: E402
 from ..i18n import count, num, plural, tr  # noqa: E402
 from . import common as C  # noqa: E402
@@ -365,6 +366,8 @@ class VocalPage(Gtk.Box):
                                ("audio-volume-muted-symbolic", "tl_silence", "silence"),
                                ("edit-undo-symbolic", "tl_undo", "undo")):
             bar.append(btn(icon, tr(key + "_tip"), lambda act=act: self.tl_action(act), tr(key)))
+        bar.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
+        bar.append(btn("media-playlist-shuffle-symbolic", tr("sc_tip"), lambda: self.scratch_dialog(), tr("sc_btn")))
         sp = Gtk.Box(hexpand=True)
         bar.append(sp)
         for icon, tip, f in (("zoom-out-symbolic", tr("tl_zoom_out"), 1.25), ("zoom-in-symbolic", tr("tl_zoom_in"), 0.8),
@@ -503,6 +506,63 @@ class VocalPage(Gtk.Box):
             self._edit_many(edits)
             d = max(b - a for _p, a, b, _r in self.clipboard)
             self.win.toast(tr("tl_paste_done", d=d, at=C.fmt_dur(at)) + (f" · {len(edits)}×" if len(edits) > 1 else ""))
+
+    # ---------------------------------------------------------------- skrecze
+    def scratch_dialog(self):
+        """Skrecz z początku zaznaczenia, w tempie bitu (BPM wykryte z podkładu, do poprawienia ręcznie)."""
+        items, span = self._sel_tracks()
+        if not items:
+            self.win.toast(tr("sc_need_sel"))
+            return
+        d = Adw.AlertDialog(heading=tr("sc_title"), body=tr("sc_body"))
+        grp = Adw.PreferencesGroup()
+        bpm_row = Adw.SpinRow.new_with_range(60, 200, 0.5)
+        bpm_row.set_title(tr("sc_bpm"))
+        bpm_row.set_digits(1)
+        bpm_row.set_value(float(getattr(self, "_bpm", None) or 90.0))
+        style = Adw.ComboRow(title=tr("sc_style"), model=Gtk.StringList.new([tr("sc_s_" + k) for k in SC.STYLES]))
+        style.set_selected(SC.STYLES.index("mix"))
+        beats_opts = [1, 2, 4, 8]
+        beats = Adw.ComboRow(title=tr("sc_beats"), model=Gtk.StringList.new([str(b) for b in beats_opts]))
+        beats.set_selected(2)
+        for r in (bpm_row, style, beats):
+            grp.add(r)
+        d.set_extra_child(grp)
+        d.add_response("cancel", tr("cancel"))
+        d.add_response("ok", tr("sc_apply"))
+        d.set_response_appearance("ok", Adw.ResponseAppearance.SUGGESTED)
+        d.set_default_response("ok")
+        b = self.backing
+        if b and b.raw and getattr(self, "_bpm_src", None) != b.raw:            # tempo z podkładu, w tle
+            bpm_row.set_subtitle(tr("sc_detecting"))
+            src = b.raw
+            fut = self.ex.submit(SC.detect_bpm, src)
+
+            def got(f):
+                try:
+                    self._bpm, self._bpm_src = f.result(), src
+                    bpm_row.set_value(self._bpm)
+                    bpm_row.set_subtitle(tr("sc_detected"))
+                except Exception:  # noqa: BLE001
+                    bpm_row.set_subtitle(tr("sc_manual"))
+                return False
+            fut.add_done_callback(lambda f: GLib.idle_add(got, f))
+        elif not b:
+            bpm_row.set_subtitle(tr("sc_no_bk"))
+        else:
+            bpm_row.set_subtitle(tr("sc_detected"))
+
+        def resp(_d, r):
+            if r != "ok":
+                return
+            bpm = bpm_row.get_value()
+            self._bpm = bpm
+            key = SC.STYLES[style.get_selected()]
+            n = beats_opts[beats.get_selected()]
+            self._edit_many([(t, ["scratch", a, bb, bpm, key, n]) for t, a, bb in items])
+            self.win.toast(tr("sc_done", n=n, bpm=bpm, style=tr("sc_s_" + key)))
+        d.connect("response", resp)
+        d.present(self.win)
 
     def _edit(self, t, op):
         self._edit_many([(t, op)])
@@ -1330,7 +1390,7 @@ class VocalPage(Gtk.Box):
             t.fx = float(it.get("fx", V.get_preset(t.preset, self.manual).fx_default))
             t.mute = bool(it.get("mute"))
             t.offset_ms = float(it.get("offset_ms", 0.0))
-            t.ops = [list(op) for op in it.get("ops", []) if op and op[0] in ("silence", "paste")]
+            t.ops = [list(op) for op in it.get("ops", []) if op and op[0] in ("silence", "paste", "scratch")]
             new.append(t)
         self.tracks = sorted(new, key=lambda t: os.path.basename(t.path).lower())[:MAX_TRACKS]
         self._rebuild()

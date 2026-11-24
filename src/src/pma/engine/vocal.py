@@ -543,6 +543,19 @@ def _edit_one(path, ops, sources, which, fs_hint=None):
             if seg.shape[1] != x.shape[1]:
                 seg = np.repeat(seg[:, :1], x.shape[1], axis=1)
             x[d:d + len(seg)] = seg                      # wklejenie zastępuje to, co było w tym miejscu
+        elif op[0] == "scratch":                          # ("scratch", od, do, bpm, styl, uderzenia)
+            from .scratch import render_scratch
+            a, b = int(op[1] * fs), int(op[2] * fs)
+            bpm, style, beats = float(op[3]), op[4], int(op[5])
+            smp = x[max(0, a):min(len(x), b, a + int(60.0 / bpm * fs))].copy()   # początek zaznaczenia
+            if len(smp) < int(0.03 * fs):
+                continue
+            sc = render_scratch(smp, fs, bpm, style, beats, seed=int(op[1] * 1000) % 9973)
+            if sc.shape[1] != x.shape[1]:
+                sc = np.repeat(sc[:, :1], x.shape[1], axis=1)
+            if a + len(sc) > len(x):
+                x = np.concatenate([x, np.zeros((a + len(sc) - len(x), x.shape[1]), np.float32)])
+            x[a:a + len(sc)] = sc                         # skrecz zastępuje fragment od początku zaznaczenia
     return x, fs
 
 
