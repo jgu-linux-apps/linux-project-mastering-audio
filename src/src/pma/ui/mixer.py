@@ -66,8 +66,10 @@ class LiveMixer:
     def update_volumes(self):
         if not self.pipe:
             return
+        solo = any(getattr(t, "solo", False) for t in self.tracks)     # solo: słychać tylko ścieżki z S
         for i, t in enumerate(self.tracks):
-            v = 0.0 if t.mute else 10 ** (t.volume_db / 20)
+            off = t.mute or (solo and not getattr(t, "solo", False))
+            v = 0.0 if off else 10 ** (t.volume_db / 20)
             self.pipe.get_by_name(f"dry{i}").set_property("volume", min(v, 10.0))
             if t.wet:
                 self.pipe.get_by_name(f"wet{i}").set_property("volume", min(v * fx_gain(t.fx), 10.0))

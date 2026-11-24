@@ -31,9 +31,9 @@ class Lane:
 
 
 class Timeline(AlbumChart):
-    def __init__(self, on_offset, on_seek, on_action=None, on_volume=None, on_mute=None):
+    def __init__(self, on_offset, on_seek, on_action=None, on_volume=None, on_mute=None, on_solo=None):
         super().__init__()
-        self.on_mute = on_mute
+        self.on_mute, self.on_solo = on_mute, on_solo
         self.on_commit = None            # (rodzaj, obiekt, poprzednia wartość) – do cofania Ctrl+Z
         self.on_offset, self.on_seek, self.on_action, self.on_volume = on_offset, on_seek, on_action, on_volume
         self._knob = None                # (lane, głośność na starcie) – przeciąganie pokrętła
@@ -135,12 +135,25 @@ class Timeline(AlbumChart):
         kx, ky = self._knob_xy(i)
         return kx - KNOB_R - 30, ky - 1, 20, 17          # pod wartością dB, obok pokrętła
 
-    def _mute_hit(self, x, y):
+    def _solo_rect(self, i):
+        rx, ry, rw, rh = self._mute_rect(i)
+        return rx - rw - 4, ry, rw, rh                          # S na lewo od M
+
+    def _btn_hit(self, x, y, rect, attr):
         lane = self._lane_at(y)
-        if not lane or not hasattr(lane.obj, "mute"):
+        if not lane or not hasattr(lane.obj, attr):
             return None
-        rx, ry, rw, rh = self._mute_rect(self.lanes.index(lane))
-        return lane if rx - 2 <= x <= rx + rw + 2 and ry - 2 <= y <= ry + rh + 2 else None
+        rx, ry, rw, rh = rect(self.lanes.index(lane))
+        return lane if rx - 1 <= x <= rx + rw + 1 and ry - 2 <= y <= ry + rh + 2 else None
+
+    def _mute_hit(self, x, y):
+        return self._btn_hit(x, y, self._mute_rect, "mute")
+
+    def _solo_hit(self, x, y):
+        return self._btn_hit(x, y, self._solo_rect, "solo")
+
+    def _any_solo(self):
+        return any(getattr(lane.obj, "solo", False) for lane in self.lanes)
 
     def _knob_hit(self, x, y):
         lane = self._lane_at(y)
@@ -174,6 +187,13 @@ class Timeline(AlbumChart):
 
     def _pressed(self, gesture, n, x, y):
         self.grab_focus()
+        solo = self._solo_hit(x, y)
+        if solo:
+            if self.on_solo:
+                self._commit("solo", solo.obj, solo.obj.solo)
+                self.on_solo(solo.obj, not solo.obj.solo)
+            self.queue_draw()
+            return
         mute = self._mute_hit(x, y)
         if mute:
             if self.on_mute:
@@ -213,7 +233,7 @@ class Timeline(AlbumChart):
         if y < RULER_H:
             return
         btn = g.get_current_button()
-        if self._mute_hit(x, y):
+        if self._mute_hit(x, y) or self._solo_hit(x, y):
             return
         lane = self._knob_hit(x, y) if btn == 1 else self._lane_at(y) if btn == 2 else None
         if btn != 1:
@@ -297,7 +317,7 @@ class Timeline(AlbumChart):
         name = "grab" if self._clip_hit(x, y) else "pointer" if (y < RULER_H and x >= LABEL_W) else "default"
         if self._knob_hit(x, y) or self._knob:
             name = "ns-resize"
-        if self._mute_hit(x, y):
+        if self._mute_hit(x, y) or self._solo_hit(x, y):
             name = "pointer"
         if self.tool == "select" and y >= RULER_H and x >= LABEL_W:
             name = "text"
@@ -368,6 +388,19 @@ class Timeline(AlbumChart):
             return pal["target"]
         return pal["after"][0]
 
+    def _toggle_btn(self, cr, rect, label, on, rgb, fg):
+        rx, ry, rw, rh = rect
+        if on:
+            cr.set_source_rgba(*rgb, 0.95)
+            self._bar(cr, rx, ry + rh, ry, rw, 4)
+            self._text(cr, rx + rw / 2, ry + rh - 4, label, 10, "center", 1.0, bold=True, rgb=fg)
+        else:
+            self._fg(cr, 0.35)
+            cr.set_line_width(1)
+            self._bar(cr, rx + 0.5, ry + rh - 0.5, ry + 0.5, rw - 1, 4, fill=False)
+            cr.stroke()
+            self._text(cr, rx + rw / 2, ry + rh - 4, label, 10, "center", 0.6, bold=True)
+
     def _knob_draw(self, cr, i, lane):
         """Pokrętło głośności: łuk 270° od −24 do +12 dB, znacznik 0 dB, wartość pod nazwą."""
         if not hasattr(lane.obj, "volume_db"):
@@ -378,6 +411,8 @@ class Timeline(AlbumChart):
         y = RULER_H + i * (LANE_H + GAP)
         self._text(cr, 6, y + LANE_H / 2 + 12, _minus(f"{db:+.1f} dB").replace(".", ","), 9, "left",
                    0.35 if mute else 0.85 if abs(db) >= 0.25 else 0.5)
+        self._toggle_btn(cr, self._solo_rect(i), "S", getattr(lane.obj, "solo", False), (0.96, 0.75, 0.15),
+                         (0.17, 0.12, 0.0))
         rx, ry, rw, rh = self._mute_rect(i)                     # przycisk M (wycisz)
         if mute:
             cr.set_source_rgba(0.89, 0.29, 0.29, 0.95)
@@ -465,6 +500,8 @@ class Timeline(AlbumChart):
                 amp = (LANE_H / 2 - 5) * DISPLAY_GAIN * 10 ** (getattr(lane.obj, "volume_db", 0.0) / 20)
                 if getattr(lane.obj, "mute", False):
                     amp = 0.0
+                elif self._any_solo() and not getattr(lane.obj, "solo", False):
+                    amp *= 0.25                                  # zagłuszona przez solo innej ścieżki
                 cr.set_source_rgba(*ink, 0.95)
                 cr.set_line_width(1)
                 n = len(lane.peaks)

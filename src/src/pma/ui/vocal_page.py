@@ -30,6 +30,7 @@ class VTrack:
         self.volume_db = 0.0
         self.fx = V.get_preset(preset).fx_default
         self.mute = False
+        self.solo = False
         self.offset_ms = 0.0
         self.ops = []                       # edycje z osi czasu (wyciszenia, wklejenia) – czas ścieżki, bez offsetu
         self.dry = self.wet = None          # pliki dla miksera (już przesunięte o offset_ms)
@@ -47,6 +48,7 @@ class Backing:
         self.path = path
         self.volume_db = 0.0
         self.mute = False
+        self.solo = False
         self.in_mix = False
         self.fx = 0
         self.offset_ms = 0.0
@@ -264,7 +266,7 @@ class VocalPage(Gtk.Box):
         g.set_header_suffix(snap)
         self.timeline = Timeline(on_offset=self._tl_offset, on_seek=lambda t: self.mixer.seek(t),
                                  on_action=self.tl_action, on_volume=self._tl_volume,
-                                 on_mute=self._tl_mute)
+                                 on_mute=self._tl_mute, on_solo=self._tl_solo)
         self.timeline.on_commit = lambda kind, obj, old: self._undo.append((kind, obj, old))
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class("card")
@@ -371,6 +373,8 @@ class VocalPage(Gtk.Box):
                     self._tl_volume(obj, old)
                 elif kind == "mute":
                     self._tl_mute(obj, old)
+                elif kind == "solo":
+                    self._tl_solo(obj, old)
                 L.log(f"{os.path.basename(obj.path)}: cofnięto ({kind})", tag="edit")
                 self.win.toast(tr("tl_undone_" + kind))
                 self.timeline.queue_draw()
@@ -450,6 +454,14 @@ class VocalPage(Gtk.Box):
             self.bk_mute.set_active(on)
         elif obj in self.tracks and obj.w:
             obj.w["mute"].set_active(on)
+
+    def _tl_solo(self, obj, on):
+        """Przycisk S na osi czasu: odsłuch tylko ścieżek z włączonym solo (scalony plik się nie zmienia)."""
+        obj.solo = on
+        n = sum(1 for o in self.tracks + ([self.backing] if self.backing else []) if o.solo)
+        L.log(f"solo: {n} {plural(n, 'stem', 'pl')}" if n else "solo wyłączone", tag="ui")
+        self.mixer.update_volumes()
+        self.timeline.queue_draw()
 
     def _tl_offset(self, obj, ms):
         """Klip przeciągnięty na osi czasu -> to samo pole co suwak „Przesunięcie” (ono przelicza dźwięk)."""

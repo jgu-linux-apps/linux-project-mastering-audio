@@ -52,7 +52,8 @@ It is not another Audacity – just what you need. The interface is available in
    Ctrl + wheel zooms, Shift + wheel pans, ← → move the selected clip by 1 ms (Shift: 10 ms), double-click resets it.
    Each lane has a **volume knob** next to its name: drag it up / down, drag with the **middle mouse button** anywhere on
    the lane, or scroll over the name (±0.5 dB); double-click the knob for 0 dB. It is the same value as the Volume slider. The **M** button next to it mutes the lane
-   (red = muted), the same as the mute button on the track card.
+   (red = muted), the same as the mute button on the track card. **S** (solo) plays only the lanes with S switched on (several
+   at once, the backing track too) – for listening only, the merged file is not affected.
    Waveforms are drawn at their real level, including the volume slider and mute. Every vocal comes out of mastering at
    the same level (−20 LUFS = slider at 0 dB); **Level all** sets every volume slider back to 0 dB.
    **Editing on the timeline** – the toolbar has **Move** (hand) and **Select** tools (or drag with Shift):
@@ -192,6 +193,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.8.7** – timeline: **S** (solo) button for every lane; other lanes go quiet and their waveforms dim (listening only).
 - **0.8.6** – timeline: Ctrl+Z / Undo also restores a moved clip, a volume knob change and the M (mute) button.
 - **0.8.5** – timeline: **M** (mute) button for every lane next to the volume knob.
 - **0.8.4** – timeline: volume knob for every lane (drag, middle-button drag up / down, wheel over the name, double-click = 0 dB), dB value under the name.
