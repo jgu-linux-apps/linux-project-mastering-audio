@@ -61,6 +61,8 @@ It is not another Audacity – just what you need. The interface is available in
    **Paste** (Ctrl+V – at the red cursor on the selected track, replacing what was there; e.g. duplicate a chorus),
    **Silence** (Delete / M – complete silence on the selection) and **Undo** (Ctrl+Z – also undoes moving a clip, the
    volume knob and the M button); Space plays / pauses.
+   Fine-tune a selection from the keyboard: **Shift + ← →** moves its end, **Ctrl + Shift + ← →** its start (10 ms,
+   with Alt 1 ms); the selection shows its start, end and length in milliseconds.
    Edits work on the processed audio, keep 5 ms fades at the edges and are saved in the project.
    Vocal tracks are shown in **two columns**.
 4. **Live listening** (bar at the bottom): sliders work during playback, the meter shows the peak of the sum and warns
@@ -193,6 +195,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.8.8** – timeline: precise selection with the keyboard (Shift + arrows = end, Ctrl + Shift + arrows = start, Alt = 1 ms steps), start / end / length shown on the selection.
 - **0.8.7** – timeline: **S** (solo) button for every lane; other lanes go quiet and their waveforms dim (listening only).
 - **0.8.6** – timeline: Ctrl+Z / Undo also restores a moved clip, a volume knob change and the M (mute) button.
 - **0.8.5** – timeline: **M** (mute) button for every lane next to the volume knob.

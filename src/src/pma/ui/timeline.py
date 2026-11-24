@@ -372,6 +372,17 @@ class Timeline(AlbumChart):
         if act and self.on_action:
             self.on_action(act)
             return True
+        shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
+        if self.selection and shift and keyval in (Gdk.KEY_Left, Gdk.KEY_Right):
+            obj, a0, b0 = self.selection                         # precyzyjne zaznaczanie klawiaturą
+            step = (0.001 if state & Gdk.ModifierType.ALT_MASK else 0.01) * (1 if keyval == Gdk.KEY_Right else -1)
+            if ctrl:
+                a0 = max(0.0, min(b0 - 0.01, a0 + step))         # Ctrl+Shift: początek
+            else:
+                b0 = max(a0 + 0.01, b0 + step)                   # Shift: koniec
+            self.selection = (obj, round(a0, 3), round(b0, 3))
+            self.queue_draw()
+            return True
         lane = next((lane for lane in self.lanes if lane.obj is self.selected), None)
         if not lane or keyval not in (Gdk.KEY_Left, Gdk.KEY_Right):
             return False
@@ -532,7 +543,8 @@ class Timeline(AlbumChart):
                         cr.set_line_width(1)
                         cr.rectangle(xa + 0.5, y + 0.5, xb - xa - 1, LANE_H - 1)
                         cr.stroke()
-                        self._text(cr, xa + 4, y + 12, f"{b - a:.2f} s".replace(".", ","), 9, "left", 0.9)
+                        lab = f"{int(a // 60)}:{a % 60:06.3f} – {int(b // 60)}:{b % 60:06.3f} · {b - a:.3f} s"
+                        self._text(cr, xa + 4, y + 12, lab.replace(".", ","), 9, "left", 0.9)
         # pozycja odtwarzania
         px = self._x(self.position)
         if x0 <= px <= x0 + aw:
