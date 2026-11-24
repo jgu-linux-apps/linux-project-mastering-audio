@@ -196,6 +196,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.8.10** – the app icon is shown in the Ubuntu dock again (the light / dark icon switch now uses the icon name instead of a file path).
 - **0.8.9** – timeline: horizontal scrollbar when zoomed in; the zoomed view follows the playback cursor.
 - **0.8.8** – timeline: precise selection with the keyboard (Shift + arrows = end, Ctrl + Shift + arrows = start, Alt = 1 ms steps), start / end / length shown on the selection.
 - **0.8.7** – timeline: **S** (solo) button for every lane; other lanes go quiet and their waveforms dim (listening only).

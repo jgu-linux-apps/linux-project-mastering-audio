@@ -64,7 +64,8 @@ def apply(variant=None):
         icon = f.read()
     changed = _write_if_changed(USER_ICON, icon)
     with open(SYSTEM_DESKTOP) as f:
-        lines = [(f"Icon={src}" if ln.startswith("Icon=") else ln) for ln in f.read().splitlines()]
+        # nazwa ikony (z ~/.local/share/icons), nie ścieżka: dok Ubuntu (myna-shell) pomija aplikacje z Icon=/ścieżka
+        lines = [(f"Icon={APP_ID}" if ln.startswith("Icon=") else ln) for ln in f.read().splitlines()]
     changed |= _write_if_changed(USER_DESKTOP, ("\n".join(lines) + "\n").encode())
     if changed:
         for d in (os.path.dirname(os.path.dirname(os.path.dirname(USER_ICON))), os.path.dirname(USER_DESKTOP)):
