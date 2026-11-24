@@ -85,6 +85,17 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_key(self, _c, keyval, _code, state):
         """Spacja = start / stop odtwarzania w bieżącej zakładce (poza polami do wpisywania tekstu)."""
+        if keyval == Gdk.KEY_Home and not state & Gdk.ModifierType.CONTROL_MASK:
+            w = self.get_focus()
+            while w is not None:
+                if isinstance(w, (Gtk.Editable, Gtk.Text, Gtk.TextView)):
+                    return False
+                w = w.get_parent()
+            if self.views.get_visible_child_name() == "vocal":
+                self.vocal.to_start()
+            elif self.album.ab.pipe:
+                self.album.ab.seek(0, now=True)
+            return True
         ctrl_z = keyval in (Gdk.KEY_z, Gdk.KEY_Z) and state & Gdk.ModifierType.CONTROL_MASK
         if not ctrl_z and (keyval != Gdk.KEY_space or state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK)):
             return False

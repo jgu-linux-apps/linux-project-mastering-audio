@@ -348,6 +348,9 @@ class VocalPage(Gtk.Box):
             return b
         self.tl_play = btn("media-playback-start-symbolic", tr("play") + " (Space)", lambda: self.mixer.toggle())
         self.tl_play.add_css_class("circular")
+        home = btn("media-skip-backward-symbolic", tr("to_start") + " (Home)", lambda: self.to_start())
+        home.add_css_class("circular")
+        bar.append(home)
         bar.append(self.tl_play)
         tools = Gtk.Box()
         tools.add_css_class("linked")
@@ -506,6 +509,15 @@ class VocalPage(Gtk.Box):
             self._edit_many(edits)
             d = max(b - a for _p, a, b, _r in self.clipboard)
             self.win.toast(tr("tl_paste_done", d=d, at=C.fmt_dur(at)) + (f" · {len(edits)}×" if len(edits) > 1 else ""))
+
+    def to_start(self):
+        """Powrót na początek ścieżki (przycisk ⏮ obok Play albo klawisz Home)."""
+        self.mixer.seek(0, now=True)
+        tl = self.timeline
+        tl.position = 0.0
+        if tl.view[1] > 0:
+            tl.view = (0.0, tl.view[1])
+        tl.queue_draw()
 
     # ---------------------------------------------------------------- skrecze
     def scratch_dialog(self):
@@ -850,6 +862,12 @@ class VocalPage(Gtk.Box):
         self._pos_h = self.pos.connect("change-value", lambda _s, _c, v: (self.mixer.seek(v), False)[1])
         self.time_lbl = Gtk.Label(label="0:00 / 0:00")
         self.time_lbl.add_css_class("numeric")
+        home = Gtk.Button(icon_name="media-skip-backward-symbolic", tooltip_text=tr("to_start") + " (Home)",
+                          valign=Gtk.Align.CENTER)
+        home.add_css_class("circular")
+        home.add_css_class("flat")
+        home.connect("clicked", lambda *_: self.to_start())
+        row.append(home)
         row.append(self.play_btn)
         row.append(self.pos)
         row.append(self.time_lbl)

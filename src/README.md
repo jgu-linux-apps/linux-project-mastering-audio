@@ -202,6 +202,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.10.1** – ⏮ Back to start button next to Play (toolbar and player bar) and the Home key.
 - **0.10.0** – Vocals: **Scratch** – DJ scratches from the start of a selection, synced to the tempo detected from the backing track (Baby, Chirp, Transformer, Mix; 1–8 beats).
 - **0.9.2** – the timeline toolbar is pinned at the top of the Vocals tab (always visible, like in Audacity); dragging a clip that is part of a multi-track selection moves all selected tracks together (one Ctrl+Z undoes it).
 - **0.9.1** – timeline: select several tracks at once (drag across lanes) and cut / copy / paste / silence them as one block, keeping their exact arrangement; one Ctrl+Z undoes the block.

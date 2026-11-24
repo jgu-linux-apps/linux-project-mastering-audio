@@ -778,6 +778,14 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'to_start': 'Na początek',
+})
+S["en"].update({
+    'to_start': 'Back to start',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:
