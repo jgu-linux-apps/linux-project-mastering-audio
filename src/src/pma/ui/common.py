@@ -10,7 +10,7 @@ from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 from .. import APP_ID, paths  # noqa: E402
 from ..i18n import tr  # noqa: E402
 
-AUDIO_EXT = (".wav", ".wave", ".flac", ".aif", ".aiff")
+AUDIO_EXT = (".wav", ".wave", ".flac", ".aif", ".aiff", ".mp3", ".m4a", ".mp4", ".aac", ".ogg", ".oga", ".opus")
 
 
 def fmt_dur(sec):

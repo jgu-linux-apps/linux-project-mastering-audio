@@ -82,6 +82,13 @@ class VocalPage(Gtk.Box):
         self.stack.add_named(self._main(), "main")
         self.append(self.stack)
         self.bottom, self.status, self.progress, self.merge_btn = C.bottom_bar(tr("merge"), self.start_merge)
+        self.merge_bk_btn = Gtk.Button(label=tr("merge_bk_btn").upper(), tooltip_text=tr("merge_with_bk"))
+        self.merge_bk_btn.add_css_class("master-btn")
+        self.merge_bk_btn.add_css_class("merge-bk-btn")
+        self.merge_bk_btn.connect("clicked", lambda *_: self.start_merge(True))
+        self.bottom.insert_child_after(self.merge_bk_btn, self.bottom.get_first_child())
+        self.merge_btn.set_label(tr("merge_vocals_btn").upper())
+        self.merge_btn.set_tooltip_text(tr("merge_vocals"))
         self.player_bar = self._player_bar()
         self.append(Gtk.Separator())
         self.append(self.player_bar)
@@ -984,6 +991,9 @@ class VocalPage(Gtk.Box):
         rendering = any(t.dry is None and not t.error for t in self.tracks)
         ok = self._ready()
         self.merge_btn.set_sensitive(bool(ok) and not rendering and not self.busy)
+        self.merge_bk_btn.set_visible(bool(self.backing))
+        self.merge_bk_btn.set_sensitive(bool(ok) and not rendering and not self.busy and bool(self.backing and
+                                        self.backing.dry and not self.backing.mute))
         has = self.mixer.pipe is not None
         self.play_btn.set_sensitive(has)
         self.pos.set_sensitive(has)
@@ -1002,23 +1012,19 @@ class VocalPage(Gtk.Box):
             return f"{pre} - {tr('merged_suffix')}.wav"
         return f"{tr('merged_suffix')}.wav"
 
-    def start_merge(self):
+    def start_merge(self, with_bk=False):
         tracks = [t for t in self._ready() if not t.mute]
         if not tracks:
             return
+        if with_bk and not (self.backing and self.backing.dry and not self.backing.mute):
+            self.win.toast(tr("merge_no_bk"))
+            return
         st = i18n.load_settings()
-        d = Adw.AlertDialog(heading=tr("merge_dlg_title"), body=tr("merge_dlg_body"))
+        d = Adw.AlertDialog(heading=tr("merge_with_bk" if with_bk else "merge_vocals"), body=tr("merge_dlg_body"))
         grp = Adw.PreferencesGroup()
-        bk_ok = bool(self.backing and self.backing.dry and not self.backing.mute)
-        what = Adw.ComboRow(title=tr("merge_what"), model=Gtk.StringList.new([tr("merge_vocals"), tr("merge_with_bk")]))
-        what.set_selected(1 if bk_ok and (self.backing.in_mix or st.get("merge_with_bk")) else 0)
-        what.set_sensitive(bk_ok)
-        if not bk_ok:
-            what.set_subtitle(tr("merge_no_bk"))
         fmt = Adw.ComboRow(title=tr("merge_fmt"), model=Gtk.StringList.new([tr("mf_" + k) for k in V.MERGE_FORMATS]))
         last = st.get("merge_fmt", "wav24")
         fmt.set_selected(V.MERGE_FORMATS.index(last) if last in V.MERGE_FORMATS else 0)
-        grp.add(what)
         grp.add(fmt)
         d.set_extra_child(grp)
         d.add_response("cancel", tr("cancel"))
@@ -1029,10 +1035,9 @@ class VocalPage(Gtk.Box):
         def resp(_d, r):
             if r != "save":
                 return
-            with_bk = bk_ok and what.get_selected() == 1
             key = V.MERGE_FORMATS[fmt.get_selected()]
             st2 = i18n.load_settings()
-            st2["merge_fmt"], st2["merge_with_bk"] = key, with_bk
+            st2["merge_fmt"] = key
             i18n.save_settings(st2)
             if self.backing:
                 self.backing.in_mix = with_bk

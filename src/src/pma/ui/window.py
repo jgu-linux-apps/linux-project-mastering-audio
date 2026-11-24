@@ -6,7 +6,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk  # noqa: E402
 
 from .. import APP_NAME, VERSION, i18n  # noqa: E402
 from .. import log as L  # noqa: E402
@@ -77,8 +77,31 @@ class MainWindow(Adw.ApplicationWindow):
         bp.add_setter(self.album.columns, "orientation", Gtk.Orientation.VERTICAL)
         bp.add_setter(self.album.columns, "homogeneous", False)
         self.add_breakpoint(bp)
+        keys = Gtk.EventControllerKey(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+        keys.connect("key-pressed", self._on_key)
+        self.add_controller(keys)
         if os.environ.get("PMA_START_TAB") == "album":
             self.views.set_visible_child_name("album")
+
+    def _on_key(self, _c, keyval, _code, state):
+        """Spacja = start / stop odtwarzania w bieżącej zakładce (poza polami do wpisywania tekstu)."""
+        if keyval != Gdk.KEY_space or state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK):
+            return False
+        focus = self.get_focus()
+        w = focus
+        while w is not None:
+            if isinstance(w, (Gtk.Editable, Gtk.Text, Gtk.TextView)):
+                return False
+            w = w.get_parent()
+        if self.views.get_visible_child_name() == "album":
+            if self.album.ab.pipe:
+                self.album.ab.toggle()
+                return True
+            return False
+        if self.vocal.mixer.pipe:
+            self.vocal.mixer.toggle()
+            return True
+        return False
 
     def _on_term(self, btn):
         on = btn.get_active()

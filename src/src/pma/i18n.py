@@ -704,6 +704,16 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'merge_vocals_btn': 'Scal wokale',
+    'merge_bk_btn': 'Scal z bitem',
+})
+S["en"].update({
+    'merge_vocals_btn': 'Merge vocals',
+    'merge_bk_btn': 'Merge with beat',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:

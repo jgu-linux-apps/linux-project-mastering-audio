@@ -3,7 +3,7 @@
 A focused mastering app for Ubuntu with two tabs:
 
 1. **Vocals** – master your vocal tracks (lead, ad-libs, backing vocals…), listen live with per-track volume and
-   reverb/echo sliders, then **MERGE ALL TRACKS INTO ONE** → a single final WAV.
+   reverb/echo sliders, then **MERGE VOCALS** or **MERGE WITH BEAT** → a single WAV or MP3.
 2. **Album** – finished, mixed songs: optional light **mix mastering**, **loudness normalization of the whole album**,
    an album chart and fair **A/B listening**, then **NORMALIZE**.
 
@@ -13,7 +13,8 @@ It is not another Audacity – just what you need. The interface is available in
 
 ## Vocals tab
 
-1. Drop **1–10 WAV files** (mono or stereo; FLAC/AIFF work too). Tracks get the letters **A, B, C…** by file name.
+1. Drop **1–20 audio files** – WAV, FLAC, AIFF, **MP3**, M4A/AAC, OGG or Opus (mono or stereo; the same goes for the
+   backing track and the Album tab). Tracks get the letters **A, B, C…** by file name.
    They should all start at the same moment (the way a DAW exports stems).
 2. Pick a **mastering option** – the tile sets every track, and each track can be changed on its own:
 
@@ -60,7 +61,7 @@ It is not another Audacity – just what you need. The interface is available in
 4. **Live listening** (bar at the bottom): sliders work during playback, the meter shows the peak of the sum and warns
    when it is too loud. Seeking is safe: the jump happens when the slider stops, and if playback ever stalls the
    player rebuilds itself at the same position.
-5. **MERGE ALL TRACKS INTO ONE** – choose the content (**vocals only** or **vocals with the backing track**) and the
+5. **MERGE VOCALS** or **MERGE WITH BEAT** (two buttons side by side) – then choose the
    format (**WAV 24 bit**, **WAV 16 bit / 44.1 kHz** with dither, **MP3 320 / 256 / 192 kbps**); the file sounds exactly
    like the live preview. If the sum goes above −1 dBTP, a true-peak limiter protects the peaks.
 
@@ -187,6 +188,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.8.1** – MP3 / M4A / OGG / Opus input; two merge buttons (**Merge vocals** / **Merge with beat**) with WAV or MP3 output; Space starts / stops playback anywhere in the window; up to 20 vocal tracks in the docs.
 - **0.8.0** – Vocals: timeline **select, cut, copy, paste, silence and undo** (e.g. duplicate a chorus), timeline toolbar with play and zoom, vocal tracks in **two columns**; **merge dialog** – vocals only or with the beat, WAV 24 / WAV 16 / MP3 320–192; **Save / Open / Clear project** buttons in the title bar.
 - **0.7.1** – Vocals: timeline waveforms at their real level (follow the volume slider and mute); **Level all** button.
 - **0.7.0** – Vocals: **timeline** with waveform clips of the backing track and vocals – drag clips to shift them in time, seek, zoom and nudge with the arrow keys.

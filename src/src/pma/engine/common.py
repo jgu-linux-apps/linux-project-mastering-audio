@@ -10,8 +10,16 @@ from . import dsp
 CEILING_DBTP = -1.0
 
 
+DECODE_RATE = 48000      # pliki, których libsndfile nie czyta (M4A, AAC, Opus…), dekoduje ffmpeg do tej częstotliwości
+
+
 def load(path):
-    x, fs = sf.read(path, dtype="float32", always_2d=True)
+    """WAV / FLAC / AIFF / MP3 / OGG przez libsndfile; reszta (M4A, AAC, Opus, MP4) przez ffmpeg."""
+    try:
+        x, fs = sf.read(path, dtype="float32", always_2d=True)
+    except Exception:  # noqa: BLE001
+        from .export import _decode
+        x, fs = _decode(path, DECODE_RATE), DECODE_RATE
     if x.shape[1] > 2:
         x = x[:, :2]
     return x, fs

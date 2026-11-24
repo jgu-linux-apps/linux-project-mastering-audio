@@ -338,7 +338,8 @@ def process_dry(x, fs, p, name=""):
 
 
 def load_vocal(path, fs_target=None):
-    x, fs = sf.read(path, dtype="float32", always_2d=True)
+    from .common import load
+    x, fs = load(path)
     x = x[:, :2]
     if x.shape[1] == 1:
         x = np.repeat(x, 2, axis=1)            # mono -> środek panoramy

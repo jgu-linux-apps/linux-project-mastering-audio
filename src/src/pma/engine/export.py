@@ -41,9 +41,11 @@ def write_wav(path, x, fs, quality, tags, ceiling=CEILING_DBTP):
     return dict(path=path, true_peak=dsp.true_peak_db(data.astype(np.float32) / (32768.0 if sub == "PCM_16" else 1.0)))
 
 
-def _decode(path):
-    p = subprocess.run([FFMPEG, "-v", "error", "-i", path, "-map", "0:a:0", "-f", "f32le", "-ac", "2", "-"],
-                       capture_output=True, check=True)
+def _decode(path, rate=None):
+    cmd = [FFMPEG, "-v", "error", "-i", path, "-map", "0:a:0", "-f", "f32le", "-ac", "2"]
+    if rate:
+        cmd += ["-ar", str(rate)]
+    p = subprocess.run(cmd + ["-"], capture_output=True, check=True)
     return np.frombuffer(p.stdout, dtype=np.float32).reshape(-1, 2)
 
 

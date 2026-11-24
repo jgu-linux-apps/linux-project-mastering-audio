@@ -253,8 +253,6 @@ class Timeline(AlbumChart):
             act = "undo"
         elif keyval in (Gdk.KEY_Delete, Gdk.KEY_m, Gdk.KEY_M):
             act = "silence"
-        elif keyval == Gdk.KEY_space:
-            act = "play"
         elif keyval == Gdk.KEY_Escape:
             self.selection = None
             self.queue_draw()
