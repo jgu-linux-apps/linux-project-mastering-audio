@@ -432,7 +432,22 @@ class VocalPage(Gtk.Box):
             if t in objs:
                 off = t.offset_ms / 1000
                 out.append((t, max(0.0, a - off), max(0.0, b - off)))
+                for c in t.clips:                     # klipy (wklejki) na tym torze, które zachodzą na zaznaczenie
+                    cs, ce = self._clip_span(c)
+                    if ce > a and cs < b:
+                        coff = c.offset_ms / 1000
+                        out.append((c, max(0.0, max(a, cs) - coff), max(0.0, min(b, ce) - coff)))
         return out, (a, b)
+
+    @staticmethod
+    def _clip_span(c):
+        """Początek i koniec klipu na osi czasu (z przycięcia)."""
+        s_, e_ = 0.0, c.duration or 1e9
+        for op in c.ops:
+            if op[0] == "trim":
+                s_, e_ = max(s_, op[1]), min(e_, op[2])
+        off = c.offset_ms / 1000
+        return off + s_, off + e_
 
     def tl_action(self, act):
         if act == "play":
