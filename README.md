@@ -210,6 +210,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.12.2** – fix: a pasted clip contains exactly what was heard in the copied selection, including earlier edits (pastes, scratches, silences) – it could come out empty before.
 - **0.12.1** – fix: scratch, cut, copy and silence also work on pasted clips covered by the selection (since 0.12.0 they only changed the track underneath).
 - **0.12.0** – timeline: pasted parts are **separate clips** on the lane – they move, trim and delete on their own (undoable, saved in the project); the app asks to save unsaved changes before closing.
 - **0.11.1** – timeline: trim a clip by dragging its left / right edge (undoable, saved in the project), so you can paste right next to it.

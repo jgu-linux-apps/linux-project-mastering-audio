@@ -528,7 +528,9 @@ class VocalPage(Gtk.Box):
                 return
             if act in ("copy", "cut"):
                 # schowek: fragment każdej ścieżki + jej przesunięcie względem początku zaznaczenia na osi czasu
-                self.clipboard = [(t.path, a, b, (t.offset_ms / 1000 + a) - span[0]) for t, a, b in items]
+                # razem z edycjami źródła: klip ma dokładnie to, co słychać w zaznaczeniu (wklejki, skrecze…)
+                self.clipboard = [(t.path, a, b, (t.offset_ms / 1000 + a) - span[0], [list(o) for o in t.ops],
+                                   t.preset) for t, a, b in items]
                 L.log(f"skopiowano {span[1] - span[0]:.2f} s z {len(items)} {plural(len(items), 'stem', 'pl')}",
                       tag="edit")
             if act in ("cut", "silence"):
@@ -547,15 +549,15 @@ class VocalPage(Gtk.Box):
             single = len(self.clipboard) == 1
             sel_row = tl.selected.parent if isinstance(tl.selected, Clip) else tl.selected
             new = []
-            for path, a, b, rel in self.clipboard:
+            for path, a, b, rel, src_ops, preset in self.clipboard:
                 src = by_path.get(path)
                 if src is None:
                     continue
                 # jedna ścieżka: na tor zaznaczonej ścieżki; kilka: każda na swój tor, w tym samym ułożeniu.
                 # Wklejka to OSOBNY klip – przesuwa się niezależnie od reszty toru.
                 row = sel_row if single and sel_row in self.tracks else src
-                c = Clip(row, path, src.preset)
-                c.ops = [["trim", a, b]]
+                c = Clip(row, path, preset)
+                c.ops = [list(o) for o in src_ops if o[0] != "trim"] + [["trim", a, b]]
                 c.offset_ms = round((at + rel - a) * 1000)
                 row.clips.append(c)
                 new.append(c)
@@ -565,7 +567,7 @@ class VocalPage(Gtk.Box):
             self._push_undo(("clip_add", tuple(new), None))
             self._clips_changed(render=new)
             tl.selected = new[0]
-            d = max(b - a for _p, a, b, _r in self.clipboard)
+            d = max(it[2] - it[1] for it in self.clipboard)
             self.win.toast(tr("tl_paste_done", d=d, at=C.fmt_dur(at)) + (f" · {len(new)}×" if len(new) > 1 else ""))
 
     def to_start(self):
