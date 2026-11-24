@@ -73,7 +73,7 @@ It is not another Audacity – just what you need. The interface is available in
    Boom bap baby, Chirps in 16ths, Transformer, Tear, Flare, Scribble, Drop on the “one” – laid out on a 16th-note grid,
    1/2–8 bars long. The backing track's tempo, beat phase and “one” are detected (rap tempo kept within 80–110 BPM), so a
    ready sound lands exactly on the nearest bar.
-   **Scratch presets** (no vocal needed): “Aaah”, Stab, “Fresh”, 1 kHz tone or Kick – synthesized sounds scratched in the
+   **Scratch presets** (no vocal needed): “Aaah”, Stab, “Fresh”, soft tone or Kick – synthesized sounds scratched in the
    detected tempo and the chosen style / length, added as a new **Sample** track at the cursor.
    **Right-click** on the timeline opens a menu: Cut, Copy, Paste, Silence, Scratch… and **Delete** (the clip, the track
    or the backing track); Ctrl+Z brings a deleted track / clip back and also undoes adding a scratch preset track.
@@ -218,6 +218,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.14.1** – fix: dragging one of several selected clips (e.g. pasted choruses) moves all selected clips together again (grab a clip → the selected clips move, grab a track → the selected tracks move); preset scratches are much softer (no harsh top end, soft tone instead of 1 kHz, −6 dBFS).
 - **0.14.0** – scratch genres and patterns: **RAP / HIP-HOP** library (boom bap baby, chirps, transformer, tear, flare, scribble, drop) on a 16th-note grid; beat grid detection (tempo, phase, “one”) so preset scratches land exactly on the nearest bar.
 - **0.13.1** – right-click menu on the timeline (Cut, Copy, Paste, Silence, Scratch…, Delete clip / track); Ctrl+Z undoes adding a scratch preset track and deleting a track.
 - **0.13.0** – scratch presets: ready synthesized sounds (“Aaah”, Stab, “Fresh”, 1 kHz tone, Kick) scratched in the beat's tempo and added as a new Sample track at the cursor – no vocal needed.

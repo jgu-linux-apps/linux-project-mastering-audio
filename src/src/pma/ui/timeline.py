@@ -238,6 +238,20 @@ class Timeline(AlbumChart):
             self.queue_draw()
         self.on_context(lane.obj, x, y)
 
+    def _sel_members(self):
+        """Elementy zaznaczenia: zaznaczone tory i ich klipy (wklejki), które zachodzą na zaznaczony czas."""
+        if not self.selection:
+            return []
+        objs, a, b = self.selection
+        out = [ln for ln in self.lanes if ln.obj in objs]
+        for c in self.clips:
+            if c.parent in out and c.duration:
+                s_, e_ = self._extent(c)
+                off = c.obj.offset_ms / 1000
+                if off + e_ > a and off + s_ < b:
+                    out.append(c)
+        return out
+
     def set_tool(self, tool):
         self.tool = tool
         self.queue_draw()
@@ -322,9 +336,10 @@ class Timeline(AlbumChart):
         self._drag = (lane, lane.obj.offset_ms) if lane else None
         # klip należy do zaznaczenia kilku ścieżek -> przesuwa się cała zaznaczona grupa
         self._group = None
-        if lane and self.selection and lane.obj in self.selection[0] and len(self.selection[0]) > 1:
-            self._group = ([(ln, ln.obj.offset_ms) for ln in self.lanes if ln.obj in self.selection[0]],
-                           self.selection)
+        # chwycony klip -> przesuwają się zaznaczone klipy; chwycona ścieżka -> zaznaczone ścieżki
+        members = [m for m in self._sel_members() if lane is not None and (m.parent is None) == (lane.parent is None)]
+        if lane and len(members) > 1 and lane in members:
+            self._group = ([(ln, ln.obj.offset_ms) for ln in members], self.selection)
         if lane:
             self.set_cursor(Gdk.Cursor.new_from_name("grabbing"))
 
