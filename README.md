@@ -62,7 +62,8 @@ It is not another Audacity – just what you need. The interface is available in
    **Cut** (Ctrl+X – copies and leaves silence, so the vocal stays in time with the beat), **Copy** (Ctrl+C),
    **Paste** (Ctrl+V – a **separate clip** at the red cursor on the selected track's lane; it moves and trims on its own,
    follows the lane's volume / reverb / M / S, Delete removes it; e.g. duplicate a chorus),
-   **Silence** (Delete / M – complete silence on the selection) and **Undo** (Ctrl+Z – also undoes moving a clip, the
+   **Delete** (Delete / Backspace – removes clips inside the selection, trims or splits clips it touches; on the track itself
+   the part becomes silence so the vocal stays in time), **Silence** (M – complete silence on the selection) and **Undo** (Ctrl+Z – also undoes moving a clip, the
    volume knob and the M button); Space plays / pauses.
    **Scratch** (toolbar): DJ scratches made from the start of the selection (about one beat, e.g. the first syllable),
    in time with the beat – the tempo is detected from the backing track (and can be adjusted); styles Baby, Chirp,
@@ -218,6 +219,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.14.2** – Delete removes the selection instead of silencing it: clips inside are deleted, touched clips are trimmed or split (the track itself gets silence); Cut works the same after copying; M silences; one Ctrl+Z undoes it.
 - **0.14.1** – fix: dragging one of several selected clips (e.g. pasted choruses) moves all selected clips together again (grab a clip → the selected clips move, grab a track → the selected tracks move); preset scratches are much softer (no harsh top end, soft tone instead of 1 kHz, −6 dBFS).
 - **0.14.0** – scratch genres and patterns: **RAP / HIP-HOP** library (boom bap baby, chirps, transformer, tear, flare, scribble, drop) on a 16th-note grid; beat grid detection (tempo, phase, “one”) so preset scratches land exactly on the nearest bar.
 - **0.13.1** – right-click menu on the timeline (Cut, Copy, Paste, Silence, Scratch…, Delete clip / track); Ctrl+Z undoes adding a scratch preset track and deleting a track.

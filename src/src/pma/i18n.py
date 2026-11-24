@@ -920,6 +920,16 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'tl_delete_done': 'Usunięto {d:.2f} s',
+    'tl_silence_tip': 'Cisza na zaznaczeniu (M). Delete – usuń zaznaczenie',
+})
+S["en"].update({
+    'tl_delete_done': 'Deleted {d:.2f} s',
+    'tl_silence_tip': 'Silence on the selection (M). Delete – delete the selection',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:

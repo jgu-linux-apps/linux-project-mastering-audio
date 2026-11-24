@@ -491,7 +491,9 @@ class Timeline(AlbumChart):
             act = "paste"
         elif ctrl and keyval in (Gdk.KEY_z, Gdk.KEY_Z):
             act = "undo"
-        elif keyval in (Gdk.KEY_Delete, Gdk.KEY_m, Gdk.KEY_M):
+        elif keyval in (Gdk.KEY_Delete, Gdk.KEY_BackSpace):
+            act = "delete"
+        elif keyval in (Gdk.KEY_m, Gdk.KEY_M):
             act = "silence"
         elif keyval == Gdk.KEY_Escape:
             self.selection = None

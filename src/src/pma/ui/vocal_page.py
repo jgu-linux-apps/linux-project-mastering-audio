@@ -366,7 +366,8 @@ class VocalPage(Gtk.Box):
         add("paste", lambda: self.tl_action("paste"), bool(self.clipboard))
         add("silence", lambda: self.tl_action("silence"), has_sel)
         add("scratch", self.scratch_dialog)
-        add("delete", lambda: self._ctx_delete(obj), obj is not self.backing)
+        add("delete", lambda: self.tl_action("delete") if self.timeline.selection else self._ctx_delete(obj),
+            obj is not self.backing)
         add("delete_bk", lambda: self.set_backing(None), obj is self.backing)
         menu = Gio.Menu()
         edit = Gio.Menu()
@@ -512,6 +513,12 @@ class VocalPage(Gtk.Box):
             self._flush_pending()
             while self._undo:
                 kind, obj, old = self._undo.pop()
+                if kind == "batch":                                      # kilka zmian naraz -> cofnij wszystkie
+                    for e in obj:
+                        self._undo.append(e)
+                    for _e in obj:
+                        self.tl_action("undo")
+                    return
                 if kind == "offsets":                                     # przesunięcie całej grupy
                     for o, prev in obj:
                         if o is self.backing or o in self._all():
@@ -579,7 +586,7 @@ class VocalPage(Gtk.Box):
                 return
             self.win.toast(tr("tl_nothing_undo"))
             return
-        if act == "silence" and not self.timeline.selection and isinstance(self.timeline.selected, Clip):
+        if act == "delete" and not self.timeline.selection and isinstance(self.timeline.selected, Clip):
             c = self.timeline.selected                                   # Delete na klipie = usuń klip
             c.parent.clips.remove(c)
             self._push_undo(("clip_del", (c,), None))
@@ -587,7 +594,10 @@ class VocalPage(Gtk.Box):
             self._clips_changed()
             self.win.toast(tr("tl_clip_deleted"))
             return
-        if act in ("copy", "cut", "silence"):
+        if act == "delete" and not self.timeline.selection:
+            self.win.toast(tr("tl_need_sel"))
+            return
+        if act in ("copy", "cut", "silence", "delete"):
             items, span = self._sel_tracks()
             if not items:
                 self.win.toast(tr("tl_need_sel"))
@@ -599,8 +609,10 @@ class VocalPage(Gtk.Box):
                                    t.preset) for t, a, b in items]
                 L.log(f"skopiowano {span[1] - span[0]:.2f} s z {len(items)} {plural(len(items), 'stem', 'pl')}",
                       tag="edit")
-            if act in ("cut", "silence"):
+            if act == "silence":
                 self._edit_many([(t, ["silence", a, b]) for t, a, b in items])
+            elif act in ("cut", "delete"):
+                self._delete_range(items)
             d = span[1] - span[0]
             self.win.toast(tr("tl_" + act + "_done", d=d) + (f" · {len(items)}×" if len(items) > 1 else ""))
             return
@@ -738,6 +750,48 @@ class VocalPage(Gtk.Box):
             self.win.toast(tr("sc_done", n=n, bpm=bpm, style=tr("sc_p_" + key)))
         d.connect("response", resp)
         d.present(self.win)
+
+    def _delete_range(self, items):
+        """Usuń zaznaczenie: klipy w całości – usunięte, częściowo – przycięte (w środku – podział na dwa),
+        sama ścieżka – cisza (czasu wokalu nie wycinamy, żeby nie rozjechał się z bitem). Jedno Ctrl+Z."""
+        entries, edits, added, removed = [], [], [], []
+        for t, a, b in items:
+            if not isinstance(t, Clip):
+                edits.append((t, ["silence", a, b]))
+                continue
+            s_, e_ = 0.0, t.duration or 1e9
+            for op in t.ops:
+                if op[0] == "trim":
+                    s_, e_ = max(s_, op[1]), min(e_, op[2])
+            if a <= s_ + 0.005 and b >= e_ - 0.005:
+                removed.append(t)
+            elif a <= s_ + 0.005:
+                edits.append((t, ["trim", b, e_]))
+            elif b >= e_ - 0.005:
+                edits.append((t, ["trim", s_, a]))
+            else:                                                 # środek klipu -> dwa klipy
+                edits.append((t, ["trim", s_, a]))
+                c2 = Clip(t.parent, t.path, t.preset)
+                c2.offset_ms = t.offset_ms
+                c2.ops = [list(o) for o in t.ops] + [["trim", b, e_]]
+                t.parent.clips.append(c2)
+                added.append(c2)
+        for c in removed:
+            c.parent.clips.remove(c)
+        if edits:
+            for t, op in edits:
+                t.ops.append(op)
+            entries.append(("ops", tuple(t for t, _ in edits), None))
+        if removed:
+            entries.append(("clip_del", tuple(removed), None))
+        if added:
+            entries.append(("clip_add", tuple(added), None))
+        if entries:
+            self._push_undo(("batch", tuple(entries), None))
+        for t in dict.fromkeys(t for t, _ in edits):
+            self._post(t)
+        self.timeline.selection = None
+        self._clips_changed(render=added)
 
     def _clips_changed(self, render=()):
         for c in render:
