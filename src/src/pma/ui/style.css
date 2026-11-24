@@ -37,16 +37,16 @@ progressbar.splash-progress > trough > progress {
 
 /* ---------- okno główne ---------- */
 .preset-card {
-  padding: 14px 16px;
-  border-radius: 14px;
-  min-width: 150px;
+  padding: 7px 11px;
+  border-radius: 11px;
+  min-width: 118px;
 }
 .preset-card .preset-name {
   font-weight: 700;
-  font-size: 1.08em;
+  font-size: 0.98em;
 }
 .preset-card .preset-desc {
-  font-size: 0.85em;
+  font-size: 0.76em;
   opacity: 0.7;
 }
 .preset-card:checked {

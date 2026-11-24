@@ -222,6 +222,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.15.1** – the window scales properly when not maximized (the toolbar scrolls and shows icons only in a narrower window); smaller option tiles; a click anywhere on a lane moves the playback cursor there, like in Audacity.
 - **0.15.0** – taller timeline lanes like in Audacity: Small / Medium / Large (default Medium, 80 px), drag a lane's bottom edge to resize it, “Selected larger” mode, Ctrl+Shift+wheel; saved in the project.
 - **0.14.2** – Delete removes the selection instead of silencing it: clips inside are deleted, touched clips are trimmed or split (the track itself gets silence); Cut works the same after copying; M silences; one Ctrl+Z undoes it.
 - **0.14.1** – fix: dragging one of several selected clips (e.g. pasted choruses) moves all selected clips together again (grab a clip → the selected clips move, grab a track → the selected tracks move); preset scratches are much softer (no harsh top end, soft tone instead of 1 kHz, −6 dBFS).

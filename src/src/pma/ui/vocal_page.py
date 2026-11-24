@@ -112,7 +112,11 @@ class VocalPage(Gtk.Box):
         self.tl_bar.set_margin_end(18)
         self.tl_bar.set_margin_top(4)
         self.tl_bar.set_margin_bottom(4)
-        bar.append(self.tl_bar)
+        # w węższym oknie pasek przewija się w poziomie (a podpisy chowa breakpoint w window.py) –
+        # wcześniej jego szerokość nie pozwalała oknu się zwęzić i treść wychodziła poza ekran
+        sc = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.AUTOMATIC, vscrollbar_policy=Gtk.PolicyType.NEVER,
+                                propagate_natural_height=True, child=self.tl_bar)
+        bar.append(sc)
         bar.append(Gtk.Separator())
         self.tl_topbar = bar
         self.append(bar)
@@ -157,11 +161,12 @@ class VocalPage(Gtk.Box):
             box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
             n = Gtk.Label(label=tr("vp_" + key), xalign=0)
             n.add_css_class("preset-name")
-            d = Gtk.Label(label=tr(f"vp_{key}_d"), xalign=0, wrap=True, max_width_chars=18)
+            d = Gtk.Label(label=tr(f"vp_{key}_d"), xalign=0, wrap=True, max_width_chars=16, lines=2, ellipsize=Pango.EllipsizeMode.END)
             d.add_css_class("preset-desc")
             box.append(n)
             box.append(d)
             b.set_child(box)
+            b.set_tooltip_text(f"{tr('vp_' + key)} – {tr(f'vp_{key}_d')}")
             if first:
                 b.set_group(first)
             else:
@@ -406,6 +411,7 @@ class VocalPage(Gtk.Box):
             self.win.toast(tr("ctx_track_deleted", name=os.path.basename(obj.path)))
 
     def _tl_toolbar(self):
+        self.tl_labels = []                                # podpisy przycisków – chowane w wąskim oknie
         bar = Gtk.Box(spacing=6)
         for m in ("top", "start", "end"):
             getattr(bar, f"set_margin_{m}")(10)
@@ -416,7 +422,9 @@ class VocalPage(Gtk.Box):
             if label:
                 box = Gtk.Box(spacing=6)
                 box.append(Gtk.Image(icon_name=icon))
-                box.append(Gtk.Label(label=label))
+                lb = Gtk.Label(label=label)
+                self.tl_labels.append(lb)
+                box.append(lb)
                 b.set_child(box)
             else:
                 b.set_icon_name(icon)
@@ -474,11 +482,12 @@ class VocalPage(Gtk.Box):
             bar.append(btn(icon, tip, lambda f=f: self._tl_zoom(f)))
         return bar
 
-    @staticmethod
-    def _icon_label(icon, text):
+    def _icon_label(self, icon, text):
         box = Gtk.Box(spacing=6)
         box.append(Gtk.Image(icon_name=icon))
-        box.append(Gtk.Label(label=text))
+        lb = Gtk.Label(label=text)
+        self.tl_labels.append(lb)
+        box.append(lb)
         return box
 
     def _tl_zoom(self, f):

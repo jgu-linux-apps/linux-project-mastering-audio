@@ -368,6 +368,10 @@ class Timeline(AlbumChart):
 
     def _begin(self, g, x, y):
         self._knob = None
+        # klik (bez przeciągania) na torze przestawia kursor odtwarzania – jak w Audacity
+        self._press = (x, y) if (x >= LABEL_W and y >= RULER_H and g.get_current_button() == 1
+                                 and not self._knob_hit(x, y) and not self._mute_hit(x, y)
+                                 and not self._solo_hit(x, y)) else None
         edge_row = self._row_edge(y) if g.get_current_button() == 1 else None
         if edge_row is not None:                                  # dolna krawędź toru: zmiana wysokości
             self._row_drag = (edge_row, self._h(edge_row))
@@ -470,6 +474,9 @@ class Timeline(AlbumChart):
             self.queue_draw()
 
     def _end(self, _g, _dx, _dy):
+        press, self._press = getattr(self, "_press", None), None
+        if press and abs(_dx) < 3 and abs(_dy) < 3 and not self._row_drag and not self._trim:
+            self.on_seek(max(0.0, self._t(press[0])))
         if self._row_drag:
             self._row_drag = None
             if self.on_heights:

@@ -73,7 +73,16 @@ class MainWindow(Adw.ApplicationWindow):
         tv.set_content(self.toasts)
         self.set_content(tv)
         # wąskie okno: zakładka Album w jednej kolumnie
+        # węższe okno: przyciski paska osi czasu bez podpisów (same ikony z podpowiedziami)
+        bp_mid = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 1500sp"))
+        for lb in self.vocal.tl_labels:
+            bp_mid.add_setter(lb, "visible", False)
+        bp_mid.add_setter(self.vocal.tl_focus, "label", "")
+        self.add_breakpoint(bp_mid)
         bp = Adw.Breakpoint.new(Adw.BreakpointCondition.parse("max-width: 960sp"))
+        for lb in self.vocal.tl_labels:                       # tu też – działa ostatni pasujący breakpoint
+            bp.add_setter(lb, "visible", False)
+        bp.add_setter(self.vocal.tl_focus, "label", "")
         bp.add_setter(self.album.columns, "orientation", Gtk.Orientation.VERTICAL)
         bp.add_setter(self.album.columns, "homogeneous", False)
         self.add_breakpoint(bp)
