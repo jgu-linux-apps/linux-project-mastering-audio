@@ -551,6 +551,18 @@ def _edit_one(path, ops, sources, which, fs_hint=None):
             if seg.shape[1] != x.shape[1]:
                 seg = np.repeat(seg[:, :1], x.shape[1], axis=1)
             x[d:d + len(seg)] = seg                      # wklejenie zastępuje to, co było w tym miejscu
+        elif op[0] == "trim":                             # ("trim", od, do): klip przycięty za krawędzie
+            a, b = max(0, int(op[1] * fs)), min(len(x), int(op[2] * fs))
+            f = fade
+            if a > 0:
+                x[:a] = 0
+                n = min(f, len(x) - a)
+                if n > 0:
+                    x[a:a + n] *= ramp(n, True)
+            if b < len(x):
+                x[b:] = 0
+                if b - f >= 0:
+                    x[b - f:b] *= ramp(f, False)
         elif op[0] == "scratch":                          # ("scratch", od, do, bpm, styl, uderzenia[, próbka])
             from .scratch import render_scratch
             a, b = max(0, int(op[1] * fs)), min(len(x), int(op[2] * fs))

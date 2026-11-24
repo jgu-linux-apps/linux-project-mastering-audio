@@ -68,6 +68,8 @@ It is not another Audacity – just what you need. The interface is available in
    Transformer or Mix, up to 8 beats; the scratch stays **inside the selection** and blends into the rest of the vocal
    (60 ms crossfade), so select just the start of a phrase. Sample: the start of the selection (1 beat) or the whole
    selection. To scratch a piece of another song, add it as a track with the **Sample** option (no processing).
+   **Trim a clip:** with the Move tool, grab the left / right edge of a clip (the cursor turns into ↔) and drag it in –
+   the audio outside the frame is removed (with short fades), leaving room to paste something right next to it.
    **Several tracks at once:** drag the selection up / down across lanes – Copy / Cut take the part from every selected
    track and Paste puts each back on its own track at the cursor, keeping their exact arrangement (Cut + Paste moves a
    whole block); one Ctrl+Z undoes the whole block.
@@ -205,6 +207,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.11.1** – timeline: trim a clip by dragging its left / right edge (undoable, saved in the project), so you can paste right next to it.
 - **0.11.0** – **Sample** track option (no processing – e.g. a piece of another song to scratch); scratches stay inside the selection and blend smoothly into the rest of the vocal; scratch sample can be the start or the whole selection.
 - **0.10.1** – ⏮ Back to start button next to Play (toolbar and player bar) and the Home key.
 - **0.10.0** – Vocals: **Scratch** – DJ scratches from the start of a selection, synced to the tempo detected from the backing track (Baby, Chirp, Transformer, Mix; 1–8 beats).

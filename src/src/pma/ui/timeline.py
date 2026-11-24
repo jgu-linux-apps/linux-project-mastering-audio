@@ -35,6 +35,8 @@ class Timeline(AlbumChart):
     def __init__(self, on_offset, on_seek, on_action=None, on_volume=None, on_mute=None, on_solo=None):
         super().__init__()
         self.on_mute, self.on_solo = on_mute, on_solo
+        self.on_trim = None              # (ścieżka, od, do) – przycięcie klipu za krawędź
+        self._trim = None
         self.on_commit = None            # (rodzaj, obiekt, poprzednia wartość) – do cofania Ctrl+Z
         self.on_offset, self.on_seek, self.on_action, self.on_volume = on_offset, on_seek, on_action, on_volume
         self._knob = None                # (lane, głośność na starcie) – przeciąganie pokrętła
@@ -170,13 +172,41 @@ class Timeline(AlbumChart):
             self.on_volume(lane.obj, db)
         self.queue_draw()
 
+    def _extent(self, lane):
+        """Ramka klipu w czasie ścieżki (bez offsetu): cały plik, zawężony przycięciami, poszerzony wklejkami."""
+        tr = self._trim
+        if tr and tr["lane"] is lane:
+            return tr["s"], tr["e"]
+        s_, e_ = 0.0, lane.duration
+        for op in getattr(lane.obj, "ops", []):
+            if op[0] == "trim":
+                s_, e_ = max(s_, op[1]), min(e_, op[2])
+            elif op[0] == "paste":
+                s_, e_ = min(s_, op[4]), max(e_, op[4] + op[3] - op[2])
+        return s_, max(s_, min(e_, lane.duration))
+
     def _clip_hit(self, x, y):
         lane = self._lane_at(y)
         if not lane or not lane.duration:
             return None
-        a = self._x(lane.obj.offset_ms / 1000)
-        b = self._x(lane.obj.offset_ms / 1000 + lane.duration)
+        s_, e_ = self._extent(lane)
+        a = self._x(lane.obj.offset_ms / 1000 + s_)
+        b = self._x(lane.obj.offset_ms / 1000 + e_)
         return lane if a <= x <= b else None
+
+    def _edge_hit(self, x, y):
+        """Lewa / prawa krawędź klipu ścieżki wokalu (±6 px) -> (lane, 'l'|'r')."""
+        lane = self._lane_at(y)
+        if not lane or lane.kind != "vocal" or not lane.duration or x < LABEL_W:
+            return None
+        s_, e_ = self._extent(lane)
+        off = lane.obj.offset_ms / 1000
+        a, b = self._x(off + s_), self._x(off + e_)
+        if abs(x - a) <= 6:
+            return lane, "l"
+        if abs(x - b) <= 6:
+            return lane, "r"
+        return None
 
     # ---------------------------------------------------------------- zdarzenia
     def set_tool(self, tool):
@@ -252,6 +282,13 @@ class Timeline(AlbumChart):
             self._sel_drag = (self.lanes.index(lane), self._t(x)) if lane and lane.kind == "vocal" and x >= LABEL_W else None
             self._drag = None
             return
+        edge = self._edge_hit(x, y)
+        if edge and self.on_trim:                                # przycinanie klipu za krawędź
+            ln, side = edge
+            s_, e_ = self._extent(ln)
+            self._trim = dict(lane=ln, side=side, s0=s_, e0=e_, s=s_, e=e_)
+            self._drag = None
+            return
         lane = self._clip_hit(x, y)
         self._drag = (lane, lane.obj.offset_ms) if lane else None
         # klip należy do zaznaczenia kilku ścieżek -> przesuwa się cała zaznaczona grupa
@@ -271,6 +308,17 @@ class Timeline(AlbumChart):
             return
         if self._ruler_drag:
             self.on_seek(max(0.0, self._t(sx + dx)))
+            return
+        if self._trim:
+            tr = self._trim
+            t = self._t(sx + dx) - tr["lane"].obj.offset_ms / 1000
+            if self.snap:
+                t = round(t * 100) / 100
+            if tr["side"] == "l":
+                tr["s"] = max(0.0, min(tr["e0"] - 0.05, t))
+            else:
+                tr["e"] = max(tr["s0"] + 0.05, min(tr["lane"].duration, t))
+            self.queue_draw()
             return
         if self._sel_drag:
             i0, t0 = self._sel_drag                              # przeciąganie w poprzek torów = kilka ścieżek
@@ -302,6 +350,12 @@ class Timeline(AlbumChart):
             self.queue_draw()
 
     def _end(self, _g, _dx, _dy):
+        if self._trim:
+            tr, self._trim = self._trim, None
+            if abs(tr["s"] - tr["s0"]) > 1e-3 or abs(tr["e"] - tr["e0"]) > 1e-3:
+                self.on_trim(tr["lane"].obj, round(tr["s"], 3), round(tr["e"], 3))
+            self.queue_draw()
+            return
         if self._knob:
             lane, start = self._knob
             if lane.obj.volume_db != start:
@@ -343,6 +397,8 @@ class Timeline(AlbumChart):
 
     def _hover(self, _c, x, y):
         name = "grab" if self._clip_hit(x, y) else "pointer" if (y < RULER_H and x >= LABEL_W) else "default"
+        if self.tool == "move" and (self._edge_hit(x, y) or self._trim):
+            name = "ew-resize"
         if self._knob_hit(x, y) or self._knob:
             name = "ns-resize"
         if self._mute_hit(x, y) or self._solo_hit(x, y):
@@ -488,7 +544,7 @@ class Timeline(AlbumChart):
 
     def _static_key(self, w, h):
         """Wszystko, od czego zależy warstwa fal i opisów (bez kursora odtwarzania i zaznaczenia)."""
-        lanes = tuple((id(ln.obj), id(ln.peaks), ln.duration, ln.name, ln.obj.offset_ms,
+        lanes = tuple((id(ln.obj), id(ln.peaks), ln.duration, ln.name, ln.obj.offset_ms, self._extent(ln),
                        getattr(ln.obj, "volume_db", 0), getattr(ln.obj, "mute", False),
                        getattr(ln.obj, "solo", False), ln.obj is self.selected) for ln in self.lanes)
         return (w, h, self._win(), lanes, themes.CURRENT, Adw.StyleManager.get_default().get_dark(),
@@ -541,7 +597,8 @@ class Timeline(AlbumChart):
             rgb = self._colors(lane.kind)
             light = not Adw.StyleManager.get_default().get_dark()
             ink = tuple(c * 0.55 for c in rgb) if light else rgb      # jasny tryb: ciemniejsza fala i obrys
-            a, b = self._x(off / 1000), self._x(off / 1000 + lane.duration)
+            ext_s, ext_e = self._extent(lane)
+            a, b = self._x(off / 1000 + ext_s), self._x(off / 1000 + ext_e)
             ca, cb = max(a, x0), min(b, x0 + aw)
             if cb <= ca:
                 continue

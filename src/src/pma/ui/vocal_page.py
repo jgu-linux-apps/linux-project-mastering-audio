@@ -282,6 +282,7 @@ class VocalPage(Gtk.Box):
                                  on_action=self.tl_action, on_volume=self._tl_volume,
                                  on_mute=self._tl_mute, on_solo=self._tl_solo)
         self.timeline.on_commit = lambda kind, obj, old: self._undo.append((kind, obj, old))
+        self.timeline.on_trim = lambda t, a, b: t in self.tracks and self._edit(t, ["trim", a, b])
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class("card")
         # pasek narzędzi osi czasu jest przypięty na górze zakładki (zawsze widoczny), patrz __init__
@@ -1411,7 +1412,7 @@ class VocalPage(Gtk.Box):
             t.fx = float(it.get("fx", V.get_preset(t.preset, self.manual).fx_default))
             t.mute = bool(it.get("mute"))
             t.offset_ms = float(it.get("offset_ms", 0.0))
-            t.ops = [list(op) for op in it.get("ops", []) if op and op[0] in ("silence", "paste", "scratch")]
+            t.ops = [list(op) for op in it.get("ops", []) if op and op[0] in ("silence", "paste", "scratch", "trim")]
             new.append(t)
         self.tracks = sorted(new, key=lambda t: os.path.basename(t.path).lower())[:MAX_TRACKS]
         self._rebuild()
