@@ -88,7 +88,7 @@ class AlbumPage(Gtk.Box):
         for m in ("bottom", "start", "end"):
             getattr(self.ab_holder, f"set_margin_{m}")(28 if m != "bottom" else 24)
         outer.append(self.ab_holder)
-        clamp = Adw.Clamp(maximum_size=1320, tightening_threshold=1000, child=outer)
+        clamp = Adw.Clamp(maximum_size=3000, tightening_threshold=2600, child=outer)
         page = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, child=clamp)
         tg = Adw.PreferencesGroup(title=tr("a_tracks"), description=tr("a_tracks_sub"))
         hb = Gtk.Box(spacing=4)

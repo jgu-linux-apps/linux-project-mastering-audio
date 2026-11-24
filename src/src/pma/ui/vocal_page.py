@@ -107,11 +107,11 @@ class VocalPage(Gtk.Box):
         for m in ("top", "bottom", "start", "end"):
             getattr(col, f"set_margin_{m}")(28 if m in ("start", "end") else 24)
         page = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,
-                                  child=Adw.Clamp(maximum_size=1240, tightening_threshold=900, child=col))
+                                  child=Adw.Clamp(maximum_size=3000, tightening_threshold=2600, child=col))
 
         g = Adw.PreferencesGroup(title=tr("v_style"), description=tr("v_style_sub"))
         cards = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,
-                            max_children_per_line=6, min_children_per_line=2, column_spacing=8, row_spacing=8)
+                            max_children_per_line=12, min_children_per_line=2, column_spacing=8, row_spacing=8)
         self.cards = {}
         first = None
         for key in V.PRESET_ORDER:
@@ -154,7 +154,7 @@ class VocalPage(Gtk.Box):
             b.connect("clicked", lambda *_, cb=cb: cb())
             hb.append(b)
         tg.set_header_suffix(hb)
-        self.list = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True, max_children_per_line=2,
+        self.list = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True, max_children_per_line=3,
                                 min_children_per_line=1, column_spacing=12, row_spacing=12)
         tg.add(self.list)
         col.append(self._backing_group())      # podkład nad wokalami – jeden, wokali zwykle kilka

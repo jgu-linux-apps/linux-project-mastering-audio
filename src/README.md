@@ -188,6 +188,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.8.2** – both tabs use the full window width (no more empty side margins); option tiles in one row and vocal tracks in up to three columns on wide screens.
 - **0.8.1** – MP3 / M4A / OGG / Opus input; two merge buttons (**Merge vocals** / **Merge with beat**) with WAV or MP3 output; Space starts / stops playback anywhere in the window; up to 20 vocal tracks in the docs.
 - **0.8.0** – Vocals: timeline **select, cut, copy, paste, silence and undo** (e.g. duplicate a chorus), timeline toolbar with play and zoom, vocal tracks in **two columns**; **merge dialog** – vocals only or with the beat, WAV 24 / WAV 16 / MP3 320–192; **Save / Open / Clear project** buttons in the title bar.
 - **0.7.1** – Vocals: timeline waveforms at their real level (follow the volume slider and mute); **Level all** button.
