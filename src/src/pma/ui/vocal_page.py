@@ -274,8 +274,44 @@ class VocalPage(Gtk.Box):
         for m in ("bottom", "start", "end"):
             getattr(self.timeline, f"set_margin_{m}")(10)
         card.append(self.timeline)
+        # suwak przewijania widoku – widoczny po przybliżeniu (Ctrl + kółko / lupa)
+        self.tl_adj = Gtk.Adjustment(lower=0, upper=1, page_size=1, step_increment=1, page_increment=10)
+        self._tl_adj_h = self.tl_adj.connect("value-changed", self._tl_scrolled)
+        self.tl_scroll = Gtk.Scrollbar(orientation=Gtk.Orientation.HORIZONTAL, adjustment=self.tl_adj, visible=False)
+        from .timeline import LABEL_W, OFF_W
+        self.tl_scroll.set_margin_start(10 + LABEL_W)
+        self.tl_scroll.set_margin_end(10 + OFF_W)
+        self.tl_scroll.set_margin_bottom(8)
+        card.append(self.tl_scroll)
+        GLib.timeout_add(100, self._tl_sync_scroll)
         g.add(card)
         return g
+
+    def _tl_sync_scroll(self):
+        """Suwak = widok osi czasu (początek, długość); po przybliżeniu pokazuje, którą część ścieżki widać."""
+        tl = self.timeline
+        start, length = tl._win()
+        total = tl._total()
+        zoomed = tl.view[1] > 0 and length < total - 1e-3
+        if zoomed and self.mixer.playing and not (start <= tl.position <= start + length):
+            start = max(0.0, min(total - length, tl.position - length * 0.1))   # widok podąża za odtwarzaniem
+            tl.view = (start, length)
+            tl.queue_draw()
+        self.tl_scroll.set_visible(zoomed)
+        if zoomed:
+            a = self.tl_adj
+            if (abs(a.get_upper() - total) > 1e-3 or abs(a.get_page_size() - length) > 1e-3
+                    or abs(a.get_value() - start) > 1e-3):
+                a.handler_block(self._tl_adj_h)
+                a.configure(start, 0, total, length / 20, length * 0.9, length)
+                a.handler_unblock(self._tl_adj_h)
+        return True
+
+    def _tl_scrolled(self, adj):
+        tl = self.timeline
+        if tl.view[1] > 0:
+            tl.view = (adj.get_value(), tl.view[1])
+            tl.queue_draw()
 
     def _tl_toolbar(self):
         bar = Gtk.Box(spacing=6)
