@@ -51,11 +51,18 @@ It is not another Audacity – just what you need. The interface is available in
    Ctrl + wheel zooms, Shift + wheel pans, ← → move the selected clip by 1 ms (Shift: 10 ms), double-click resets it.
    Waveforms are drawn at their real level, including the volume slider and mute. Every vocal comes out of mastering at
    the same level (−20 LUFS = slider at 0 dB); **Level all** sets every volume slider back to 0 dB.
+   **Editing on the timeline** – the toolbar has **Move** (hand) and **Select** tools (or drag with Shift):
+   **Cut** (Ctrl+X – copies and leaves silence, so the vocal stays in time with the beat), **Copy** (Ctrl+C),
+   **Paste** (Ctrl+V – at the red cursor on the selected track, replacing what was there; e.g. duplicate a chorus),
+   **Silence** (Delete / M – complete silence on the selection) and **Undo** (Ctrl+Z); Space plays / pauses.
+   Edits work on the processed audio, keep 5 ms fades at the edges and are saved in the project.
+   Vocal tracks are shown in **two columns**.
 4. **Live listening** (bar at the bottom): sliders work during playback, the meter shows the peak of the sum and warns
    when it is too loud. Seeking is safe: the jump happens when the slider stops, and if playback ever stalls the
    player rebuilds itself at the same position.
-5. **MERGE ALL TRACKS INTO ONE** – choose a file name and get **one 24-bit WAV** (sample rate of the first track) that
-   sounds exactly like the live preview. If the sum goes above −1 dBTP, a true-peak limiter protects the peaks.
+5. **MERGE ALL TRACKS INTO ONE** – choose the content (**vocals only** or **vocals with the backing track**) and the
+   format (**WAV 24 bit**, **WAV 16 bit / 44.1 kHz** with dither, **MP3 320 / 256 / 192 kbps**); the file sounds exactly
+   like the live preview. If the sum goes above −1 dBTP, a true-peak limiter protects the peaks.
 
 Processed tracks are cached in `~/.cache/linux-project-mastering-audio/vocal/`, so going back to an option you have
 already heard is instant (the cache is safe to delete).
@@ -130,7 +137,7 @@ file writes. It is hidden at start-up and opens only when you click the icon.
 
 ## Projects
 
-Menu (☰) → **Open project…** (Ctrl+O) / **Save project** (Ctrl+S) – a `.pmaproj` file keeps both tabs: vocal tracks with
+Buttons in the title bar (and menu ☰): **Save project** (Ctrl+S), **Open project…** (Ctrl+O) and **Clear project** (asks first, offers to save) – a `.pmaproj` file keeps both tabs: vocal tracks with
 their options, volumes, effects and offsets, the backing track, MANUAL sliders, album tracks, mastering, target, method,
 output settings, cover, reference and codec. Missing files are listed and skipped. A project can also be opened from
 the command line.
@@ -180,6 +187,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.8.0** – Vocals: timeline **select, cut, copy, paste, silence and undo** (e.g. duplicate a chorus), timeline toolbar with play and zoom, vocal tracks in **two columns**; **merge dialog** – vocals only or with the beat, WAV 24 / WAV 16 / MP3 320–192; **Save / Open / Clear project** buttons in the title bar.
 - **0.7.1** – Vocals: timeline waveforms at their real level (follow the volume slider and mute); **Level all** button.
 - **0.7.0** – Vocals: **timeline** with waveform clips of the backing track and vocals – drag clips to shift them in time, seek, zoom and nudge with the arrow keys.
 - **0.6.1** – Vocals: up to **20 tracks** (letters A–T); splash screen corners are transparent again with the Aurora theme.

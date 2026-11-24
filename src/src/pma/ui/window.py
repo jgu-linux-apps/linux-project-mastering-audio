@@ -48,6 +48,13 @@ class MainWindow(Adw.ApplicationWindow):
         menu.append(tr("about"), "app.about")
         menu.append(tr("quit"), "app.quit")
         hb.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu, primary=True))
+        for icon, tip, cb in (("document-save-symbolic", tr("project_save") + " (Ctrl+S)",
+                               lambda *_: self.save_project(self.project_path)),
+                              ("document-open-symbolic", tr("project_open") + " (Ctrl+O)", lambda *_: self.open_project()),
+                              ("edit-clear-all-symbolic", tr("project_clear"), lambda *_: self.clear_project())):
+            b = Gtk.Button(icon_name=icon, tooltip_text=tip)
+            b.connect("clicked", cb)
+            hb.pack_start(b)
         self.term_btn = Gtk.ToggleButton(icon_name="utilities-terminal-symbolic", tooltip_text=tr("terminal"))
         hb.pack_end(self.term_btn)
 
@@ -168,6 +175,33 @@ class MainWindow(Adw.ApplicationWindow):
             d.present(self)
         else:
             self.toast(tr("project_opened", name=os.path.basename(path)))
+
+    def clear_project(self):
+        """Nowy, pusty projekt: czyści obie zakładki (z pytaniem, bo zmiany nie są zapisywane same)."""
+        if self.busy:
+            self.toast(tr("project_busy"))
+            return
+        d = Adw.AlertDialog(heading=tr("project_clear_title"), body=tr("project_clear_body"))
+        d.add_response("cancel", tr("cancel"))
+        d.add_response("save", tr("project_save"))
+        d.add_response("clear", tr("project_clear"))
+        d.set_response_appearance("clear", Adw.ResponseAppearance.DESTRUCTIVE)
+        d.set_default_response("cancel")
+
+        def resp(_d, r):
+            if r == "save":
+                self.save_project(self.project_path)
+                if not self.project_path:
+                    return
+            if r in ("save", "clear"):
+                self.vocal.clear()
+                self.album.clear()
+                self.album.set_reference(None)
+                self.project_path = None
+                self.set_title(APP_NAME)
+                L.log("nowy pusty projekt", tag="project")
+        d.connect("response", resp)
+        d.present(self)
 
     def _project_filters(self):
         flt = Gtk.FileFilter(name=tr("project_filter"))

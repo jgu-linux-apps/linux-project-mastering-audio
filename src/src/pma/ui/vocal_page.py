@@ -31,6 +31,7 @@ class VTrack:
         self.fx = V.get_preset(preset).fx_default
         self.mute = False
         self.offset_ms = 0.0
+        self.ops = []                       # edycje z osi czasu (wyciszenia, wklejenia) – czas ścieżki, bez offsetu
         self.dry = self.wet = None          # pliki dla miksera (już przesunięte o offset_ms)
         self.raw = None                     # (dry, wet) prosto z renderu – przed przesunięciem
         self.duration = 0.0
@@ -65,6 +66,8 @@ class VocalPage(Gtk.Box):
         self.tracks = []
         self.backing = None
         self._offset_src = {}
+        self.clipboard = None              # (ścieżka źródłowa, od, do) – sekundy czasu ścieżki
+        self._undo = []                    # ścieżki, w kolejności edycji (Ctrl+Z cofa ostatnią)
         self.fs = None
         self.album_preset = "studio"
         self.busy = False
@@ -144,8 +147,8 @@ class VocalPage(Gtk.Box):
             b.connect("clicked", lambda *_, cb=cb: cb())
             hb.append(b)
         tg.set_header_suffix(hb)
-        self.list = Gtk.ListBox(selection_mode=Gtk.SelectionMode.NONE)
-        self.list.add_css_class("boxed-list")
+        self.list = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True, max_children_per_line=2,
+                                min_children_per_line=1, column_spacing=12, row_spacing=12)
         tg.add(self.list)
         col.append(self._backing_group())      # podkład nad wokalami – jeden, wokali zwykle kilka
         col.append(tg)
@@ -252,14 +255,145 @@ class VocalPage(Gtk.Box):
         snap = Gtk.CheckButton(label=tr("tl_snap"), active=True, valign=Gtk.Align.CENTER)
         snap.connect("toggled", lambda b: setattr(self.timeline, "snap", b.get_active()))
         g.set_header_suffix(snap)
-        self.timeline = Timeline(on_offset=self._tl_offset, on_seek=lambda t: self.mixer.seek(t))
-        card = Gtk.Box()
+        self.timeline = Timeline(on_offset=self._tl_offset, on_seek=lambda t: self.mixer.seek(t),
+                                 on_action=self.tl_action)
+        card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class("card")
-        for m in ("top", "bottom", "start", "end"):
+        card.append(self._tl_toolbar())
+        for m in ("bottom", "start", "end"):
             getattr(self.timeline, f"set_margin_{m}")(10)
         card.append(self.timeline)
         g.add(card)
         return g
+
+    def _tl_toolbar(self):
+        bar = Gtk.Box(spacing=6)
+        for m in ("top", "start", "end"):
+            getattr(bar, f"set_margin_{m}")(10)
+        bar.set_margin_bottom(4)
+
+        def btn(icon, tip, cb, label=None):
+            b = Gtk.Button(tooltip_text=tip)
+            if label:
+                box = Gtk.Box(spacing=6)
+                box.append(Gtk.Image(icon_name=icon))
+                box.append(Gtk.Label(label=label))
+                b.set_child(box)
+            else:
+                b.set_icon_name(icon)
+            b.add_css_class("flat")
+            b.connect("clicked", lambda *_: cb())
+            return b
+        self.tl_play = btn("media-playback-start-symbolic", tr("play") + " (Space)", lambda: self.mixer.toggle())
+        self.tl_play.add_css_class("circular")
+        bar.append(self.tl_play)
+        tools = Gtk.Box()
+        tools.add_css_class("linked")
+        mv = Gtk.ToggleButton(tooltip_text=tr("tl_move_tip"), active=True)
+        mv.set_child(self._icon_label("view-pan-symbolic", tr("tl_move")))
+        sel = Gtk.ToggleButton(tooltip_text=tr("tl_select_tip"), group=mv)
+        sel.set_child(self._icon_label("edit-select-symbolic", tr("tl_select")))
+        mv.connect("toggled", lambda b: b.get_active() and self.timeline.set_tool("move"))
+        sel.connect("toggled", lambda b: b.get_active() and self.timeline.set_tool("select"))
+        tools.append(mv)
+        tools.append(sel)
+        bar.append(tools)
+        bar.append(Gtk.Separator(orientation=Gtk.Orientation.VERTICAL))
+        for icon, key, act in (("edit-cut-symbolic", "tl_cut", "cut"), ("edit-copy-symbolic", "tl_copy", "copy"),
+                               ("edit-paste-symbolic", "tl_paste", "paste"),
+                               ("audio-volume-muted-symbolic", "tl_silence", "silence"),
+                               ("edit-undo-symbolic", "tl_undo", "undo")):
+            bar.append(btn(icon, tr(key + "_tip"), lambda act=act: self.tl_action(act), tr(key)))
+        sp = Gtk.Box(hexpand=True)
+        bar.append(sp)
+        for icon, tip, f in (("zoom-out-symbolic", tr("tl_zoom_out"), 1.25), ("zoom-in-symbolic", tr("tl_zoom_in"), 0.8),
+                             ("zoom-fit-best-symbolic", tr("tl_zoom_fit"), 0)):
+            bar.append(btn(icon, tip, lambda f=f: self._tl_zoom(f)))
+        return bar
+
+    @staticmethod
+    def _icon_label(icon, text):
+        box = Gtk.Box(spacing=6)
+        box.append(Gtk.Image(icon_name=icon))
+        box.append(Gtk.Label(label=text))
+        return box
+
+    def _tl_zoom(self, f):
+        tl = self.timeline
+        if not f:
+            tl.view = (0.0, 0.0)
+        else:
+            start, length = tl._win()
+            total = tl._total()
+            new = max(0.5, min(total, length * f))
+            c = tl.position if start <= tl.position <= start + length else start + length / 2
+            start = c - (c - start) * new / length
+            tl.view = (0.0, 0.0) if new >= total - 1e-6 else (max(0.0, min(total - new, start)), new)
+        tl.queue_draw()
+
+    # ---------------------------------------------------------------- edycja: wytnij / kopiuj / wklej / wycisz
+    def _sel_track(self):
+        sel = self.timeline.selection
+        if sel and sel[0] in self.tracks:
+            t, a, b = sel
+            off = t.offset_ms / 1000
+            return t, max(0.0, a - off), max(0.0, b - off)
+        return None
+
+    def tl_action(self, act):
+        if act == "play":
+            self.mixer.toggle()
+            return
+        if self.busy:
+            return
+        if act == "undo":
+            while self._undo:
+                t = self._undo.pop()
+                if t in self.tracks and t.ops:
+                    t.ops.pop()
+                    L.log(f"{os.path.basename(t.path)}: cofnięto edycję", tag="edit")
+                    self._post(t)
+                    self.win.toast(tr("tl_undone"))
+                    return
+            self.win.toast(tr("tl_nothing_undo"))
+            return
+        if act in ("copy", "cut", "silence"):
+            st = self._sel_track()
+            if not st:
+                self.win.toast(tr("tl_need_sel"))
+                return
+            t, a, b = st
+            if act in ("copy", "cut"):
+                self.clipboard = (t.path, a, b)
+                L.log(f"{os.path.basename(t.path)}: skopiowano {a:.2f}–{b:.2f} s", tag="edit")
+            if act in ("cut", "silence"):
+                self._edit(t, ["silence", a, b])
+            self.win.toast(tr("tl_" + act + "_done", d=b - a))
+            return
+        if act == "paste":
+            if not self.clipboard:
+                self.win.toast(tr("tl_empty_clip"))
+                return
+            tl = self.timeline
+            target = tl.selected if tl.selected in self.tracks else next(
+                (t for t in self.tracks if t.path == self.clipboard[0]), None)
+            if target is None:
+                return
+            src = next((t for t in self.tracks if t.path == self.clipboard[0]), None)
+            if src is None or src.raw is None:
+                self.win.toast(tr("tl_src_missing"))
+                return
+            sel = self._sel_track()
+            dest = sel[1] if sel and sel[0] is target else max(0.0, tl.position - target.offset_ms / 1000)
+            _p, a, b = self.clipboard
+            self._edit(target, ["paste", src.path, a, b, dest])
+            self.win.toast(tr("tl_paste_done", d=b - a, at=C.fmt_dur(dest + target.offset_ms / 1000)))
+
+    def _edit(self, t, op):
+        t.ops.append(op)
+        self._undo.append(t)
+        L.log(f"{os.path.basename(t.path)}: edycja {op[0]}", tag="edit")
+        self._post(t)
 
     def _tl_refresh(self):
         lanes = []
@@ -340,9 +474,6 @@ class VocalPage(Gtk.Box):
         for w in (self.bk_of, self.bk_of_spin, ms):
             self.bk_of_row.add_suffix(w)
         g.add(self.bk_of_row)
-        self.bk_mix_row = Adw.SwitchRow(title=tr("bk_in_mix"), subtitle=tr("bk_in_mix_sub"), visible=False)
-        self.bk_mix_row.connect("notify::active", self._on_bk_mix)
-        g.add(self.bk_mix_row)
         return g
 
     def choose_backing(self):
@@ -429,7 +560,7 @@ class VocalPage(Gtk.Box):
     def _bk_fill(self):
         b = self.backing
         has = b is not None
-        for w in (self.bk_mute, self.bk_rm, self.bk_vol_row, self.bk_of_row, self.bk_mix_row):
+        for w in (self.bk_mute, self.bk_rm, self.bk_vol_row, self.bk_of_row):
             w.set_visible(has)
         self.bk_pick.set_label(tr("bk_change") if has else tr("bk_choose"))
         busy = has and b.raw is None and not b.error
@@ -449,7 +580,6 @@ class VocalPage(Gtk.Box):
         self.bk_vol.set_value(b.volume_db)
         self.bk_of_spin.set_value(b.offset_ms)
         self.bk_mute.set_active(b.mute)
-        self.bk_mix_row.set_active(b.in_mix)
         self.bk_vol_v.set_text(f"{num(b.volume_db, '+.1f')} dB")
 
     def _on_bk_volume(self, sc):
@@ -510,7 +640,8 @@ class VocalPage(Gtk.Box):
         return lg
 
     def _track_row(self, n, t):
-        row = Gtk.ListBoxRow(activatable=False)
+        row = Gtk.Box()
+        row.add_css_class("card")
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
         for m in ("top", "bottom"):
             getattr(outer, f"set_margin_{m}")(10)
@@ -600,7 +731,8 @@ class VocalPage(Gtk.Box):
         sl.attach(of, 1, 2, 1, 1)
         sl.attach(of_v, 2, 2, 1, 1)
         outer.append(sl)
-        row.set_child(outer)
+        outer.set_hexpand(True)
+        row.append(outer)
         t.w = dict(sub=sub, spin=spin, dd=dd, vol=vol, vol_v=vol_v, fx=fx, fx_v=fx_v, mute=mute, of=of,
                    of_spin=of_spin)
         self._label_values(t)
@@ -700,34 +832,35 @@ class VocalPage(Gtk.Box):
         try:
             dry, wet, t.duration = fut.result()
             t.raw = (dry, wet)
-            self._tl_peaks(t, dry)
         except Exception as e:  # noqa: BLE001
             t.error = str(e)
             self._fill_sub(t)
             self._remix()
             return False
-        self._apply_offset(t)
+        self._post(t)
+        for o in self.tracks:                       # ścieżki z wklejkami z tej ścieżki – źródło się zmieniło
+            if o is not t and o.raw and any(op[0] == "paste" and op[1] == t.path for op in o.ops):
+                self._post(o)
         return False
 
-    def _apply_offset(self, t):
-        """Przesunięcie w czasie: kopia suchej i mokrej ścieżki z ciszą / uciętym początkiem (szybkie, w tle)."""
+    def _post(self, t):
+        """Edycje z osi czasu + przesunięcie: szybkie operacje na gotowych plikach, w tle."""
         if t.raw is None:
             return
         t.shift_token += 1
         tok = t.shift_token
-        if abs(t.offset_ms) < 0.5:
-            t.dry, t.wet = t.raw
-            self._fill_sub(t)
-            self._remix()
-            return
-        fut = self.ex.submit(V.shift_pair, *t.raw, t.offset_ms, os.path.basename(t.path))
-        fut.add_done_callback(lambda f: GLib.idle_add(self._shifted, t, tok, f))
+        sources = {o.path: o.raw for o in self.tracks if o.raw}
+        fut = self.ex.submit(V.prepare_track, *t.raw, [list(op) for op in t.ops], sources, t.offset_ms,
+                             os.path.basename(t.path))
+        fut.add_done_callback(lambda f: GLib.idle_add(self._posted, t, tok, f))
 
-    def _shifted(self, t, tok, fut):
+    def _posted(self, t, tok, fut):
         if tok != t.shift_token or t not in self.tracks:
             return False
         try:
-            t.dry, t.wet = fut.result()
+            r = fut.result()
+            t.dry, t.wet = r["dry"], r["wet"]
+            self.timeline.set_peaks(t, r["peaks"], r["duration"])
         except Exception as e:  # noqa: BLE001
             t.error = str(e)
         self._fill_sub(t)
@@ -746,7 +879,7 @@ class VocalPage(Gtk.Box):
         def go():
             self._offset_src.pop(id(t), None)
             L.log(f"{os.path.basename(t.path)}: przesunięcie -> {t.offset_ms:+.0f} ms", tag="ui")
-            self._apply_offset(t)
+            self._post(t)
             return False
         self._offset_src[id(t)] = GLib.timeout_add(450, go)
 
@@ -809,6 +942,8 @@ class VocalPage(Gtk.Box):
         p = self.mixer.playing
         self.play_btn.set_icon_name("media-playback-pause-symbolic" if p else "media-playback-start-symbolic")
         self.play_btn.set_tooltip_text(tr("pause") if p else tr("play"))
+        if hasattr(self, "tl_play"):
+            self.tl_play.set_icon_name("media-playback-pause-symbolic" if p else "media-playback-start-symbolic")
 
     def _on_level(self, db):
         now = time.monotonic()
@@ -850,7 +985,6 @@ class VocalPage(Gtk.Box):
         ok = self._ready()
         self.merge_btn.set_sensitive(bool(ok) and not rendering and not self.busy)
         has = self.mixer.pipe is not None
-        self.merge_btn.set_label((tr("merge_with_bk") if self._bk_in_mix() else tr("merge")).upper())
         self.play_btn.set_sensitive(has)
         self.pos.set_sensitive(has)
         if not self.busy:
@@ -860,10 +994,6 @@ class VocalPage(Gtk.Box):
                 self.status.set_text(tr("count_dur", count=count(len(ok), "stem"), dur=C.fmt_dur(max(t.duration for t in ok))))
             else:
                 self.status.set_text("")
-
-    def _bk_in_mix(self):
-        b = self.backing
-        return bool(b and b.in_mix and b.dry and not b.mute)
 
     def _default_name(self):
         stems = [os.path.splitext(os.path.basename(t.path))[0] for t in self.tracks]
@@ -876,7 +1006,46 @@ class VocalPage(Gtk.Box):
         tracks = [t for t in self._ready() if not t.mute]
         if not tracks:
             return
-        dlg = Gtk.FileDialog(title=tr("merge_save_title"), initial_name=self._default_name())
+        st = i18n.load_settings()
+        d = Adw.AlertDialog(heading=tr("merge_dlg_title"), body=tr("merge_dlg_body"))
+        grp = Adw.PreferencesGroup()
+        bk_ok = bool(self.backing and self.backing.dry and not self.backing.mute)
+        what = Adw.ComboRow(title=tr("merge_what"), model=Gtk.StringList.new([tr("merge_vocals"), tr("merge_with_bk")]))
+        what.set_selected(1 if bk_ok and (self.backing.in_mix or st.get("merge_with_bk")) else 0)
+        what.set_sensitive(bk_ok)
+        if not bk_ok:
+            what.set_subtitle(tr("merge_no_bk"))
+        fmt = Adw.ComboRow(title=tr("merge_fmt"), model=Gtk.StringList.new([tr("mf_" + k) for k in V.MERGE_FORMATS]))
+        last = st.get("merge_fmt", "wav24")
+        fmt.set_selected(V.MERGE_FORMATS.index(last) if last in V.MERGE_FORMATS else 0)
+        grp.add(what)
+        grp.add(fmt)
+        d.set_extra_child(grp)
+        d.add_response("cancel", tr("cancel"))
+        d.add_response("save", tr("merge_choose_file"))
+        d.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        d.set_default_response("save")
+
+        def resp(_d, r):
+            if r != "save":
+                return
+            with_bk = bk_ok and what.get_selected() == 1
+            key = V.MERGE_FORMATS[fmt.get_selected()]
+            st2 = i18n.load_settings()
+            st2["merge_fmt"], st2["merge_with_bk"] = key, with_bk
+            i18n.save_settings(st2)
+            if self.backing:
+                self.backing.in_mix = with_bk
+            self._merge_file(tracks, with_bk, key)
+        d.connect("response", resp)
+        d.present(self.win)
+
+    def _merge_file(self, tracks, with_bk, key):
+        ext = ".mp3" if key.startswith("mp3") else ".wav"
+        name = os.path.splitext(self._default_name())[0]
+        if with_bk:
+            name += " + " + tr("bk_short").lower()
+        dlg = Gtk.FileDialog(title=tr("merge_save_title"), initial_name=name + ext)
         dlg.set_initial_folder(Gio.File.new_for_path(os.path.dirname(tracks[0].path)))
 
         def done(d, res):
@@ -884,12 +1053,12 @@ class VocalPage(Gtk.Box):
                 out = d.save_finish(res).get_path()
             except GLib.Error:
                 return
-            if not out.lower().endswith(".wav"):
-                out += ".wav"
-            self._do_merge(tracks, out)
+            if not out.lower().endswith(ext):
+                out += ext
+            self._do_merge(tracks, out, with_bk, key)
         dlg.save(self.win, None, done)
 
-    def _do_merge(self, tracks, out):
+    def _do_merge(self, tracks, out, with_bk=False, key="wav24"):
         self.mixer.pause()
         for t in tracks:
             L.log(f"{os.path.basename(t.path)}: {t.preset}, głośność {t.volume_db:+.1f} dB, efekt {int(t.fx)}%",
@@ -900,11 +1069,11 @@ class VocalPage(Gtk.Box):
         self.status.set_text(tr("merging"))
         self._update()
         spec = [dict(dry=t.dry, wet=t.wet, volume_db=t.volume_db, fx=t.fx) for t in tracks]
-        if self._bk_in_mix():
+        if with_bk and self.backing and self.backing.dry:
             b = self.backing
             spec.append(dict(dry=b.dry, wet=None, volume_db=b.volume_db, fx=0))
             L.log(f"podkład w miksie: {os.path.basename(b.path)}, głośność {b.volume_db:+.1f} dB", tag="merge")
-        fut = self.ex.submit(V.merge, spec, out, self.fs)
+        fut = self.ex.submit(V.merge, spec, out, self.fs, key)
         pulse = GLib.timeout_add(120, lambda: (self.progress.pulse(), True)[1])
         fut.add_done_callback(lambda f: GLib.idle_add(self._merged, f, pulse))
 
@@ -937,7 +1106,7 @@ class VocalPage(Gtk.Box):
         b = self.backing
         return dict(preset=self.album_preset, manual=dict(self.manual),
                     tracks=[dict(path=t.path, preset=t.preset, volume_db=t.volume_db, fx=t.fx, mute=t.mute,
-                                 offset_ms=t.offset_ms) for t in self.tracks],
+                                 offset_ms=t.offset_ms, ops=[list(op) for op in t.ops]) for t in self.tracks],
                     backing=dict(path=b.path, volume_db=b.volume_db, mute=b.mute, in_mix=b.in_mix,
                                  offset_ms=b.offset_ms) if b else None)
 
@@ -977,6 +1146,7 @@ class VocalPage(Gtk.Box):
             t.fx = float(it.get("fx", V.get_preset(t.preset, self.manual).fx_default))
             t.mute = bool(it.get("mute"))
             t.offset_ms = float(it.get("offset_ms", 0.0))
+            t.ops = [list(op) for op in it.get("ops", []) if op and op[0] in ("silence", "paste")]
             new.append(t)
         self.tracks = sorted(new, key=lambda t: os.path.basename(t.path).lower())[:MAX_TRACKS]
         self._rebuild()

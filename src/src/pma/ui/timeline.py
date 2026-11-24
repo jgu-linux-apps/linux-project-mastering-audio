@@ -28,9 +28,12 @@ class Lane:
 
 
 class Timeline(AlbumChart):
-    def __init__(self, on_offset, on_seek):
+    def __init__(self, on_offset, on_seek, on_action=None):
         super().__init__()
-        self.on_offset, self.on_seek = on_offset, on_seek
+        self.on_offset, self.on_seek, self.on_action = on_offset, on_seek, on_action
+        self.tool = "move"               # move: łapka przesuwa klipy · select: zaznaczanie fragmentu
+        self.selection = None            # (obj, początek, koniec) w sekundach osi czasu
+        self._sel_drag = None
         self.lanes = []
         self.items = [1]
         self.position = 0.0
@@ -128,11 +131,27 @@ class Timeline(AlbumChart):
         return lane if a <= x <= b else None
 
     # ---------------------------------------------------------------- zdarzenia
+    def set_tool(self, tool):
+        self.tool = tool
+        self.queue_draw()
+
+    def _selecting(self, g=None):
+        st = g.get_current_event_state() if g else 0
+        return self.tool == "select" or bool(st & Gdk.ModifierType.SHIFT_MASK)
+
     def _pressed(self, gesture, n, x, y):
         self.grab_focus()
         if y < RULER_H and x >= LABEL_W:
             self._ruler_drag = True
             self.on_seek(max(0.0, self._t(x)))
+            return
+        if self._selecting(gesture) and x >= LABEL_W:
+            lane = self._lane_at(y)
+            if lane and lane.kind == "vocal":
+                self.selected = lane.obj
+                self.selection = None
+                self.on_seek(max(0.0, self._t(x)))           # klik = kursor wklejania w tym miejscu
+            self.queue_draw()
             return
         lane = self._clip_hit(x, y)
         self.selected = lane.obj if lane else None
@@ -141,8 +160,13 @@ class Timeline(AlbumChart):
             gesture.set_state(Gtk.EventSequenceState.CLAIMED)
         self.queue_draw()
 
-    def _begin(self, _g, x, y):
+    def _begin(self, g, x, y):
         if y < RULER_H:
+            return
+        if self._selecting(g):
+            lane = self._lane_at(y)
+            self._sel_drag = (lane, self._t(x)) if lane and lane.kind == "vocal" and x >= LABEL_W else None
+            self._drag = None
             return
         lane = self._clip_hit(x, y)
         self._drag = (lane, lane.obj.offset_ms) if lane else None
@@ -154,6 +178,14 @@ class Timeline(AlbumChart):
         if self._ruler_drag:
             self.on_seek(max(0.0, self._t(sx + dx)))
             return
+        if self._sel_drag:
+            lane, t0 = self._sel_drag
+            t1 = self._t(sx + dx)
+            a, b = sorted((max(0.0, t0), max(0.0, t1)))
+            self.selection = (lane.obj, a, b) if b - a > 0.01 else None
+            self.selected = lane.obj
+            self.queue_draw()
+            return
         if not self._drag:
             return
         lane, start = self._drag
@@ -163,6 +195,7 @@ class Timeline(AlbumChart):
 
     def _end(self, _g, _dx, _dy):
         self._ruler_drag = False
+        self._sel_drag = None
         if self._drag:
             lane, start = self._drag
             self._drag = None
@@ -181,6 +214,8 @@ class Timeline(AlbumChart):
 
     def _hover(self, _c, x, y):
         name = "grab" if self._clip_hit(x, y) else "pointer" if (y < RULER_H and x >= LABEL_W) else "default"
+        if self.tool == "select" and y >= RULER_H and x >= LABEL_W:
+            name = "text"
         if self._drag:
             name = "grabbing"
         self.set_cursor(Gdk.Cursor.new_from_name(name))
@@ -206,6 +241,27 @@ class Timeline(AlbumChart):
         return True
 
     def _key(self, _c, keyval, _code, state):
+        ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        act = None
+        if ctrl and keyval in (Gdk.KEY_c, Gdk.KEY_C):
+            act = "copy"
+        elif ctrl and keyval in (Gdk.KEY_x, Gdk.KEY_X):
+            act = "cut"
+        elif ctrl and keyval in (Gdk.KEY_v, Gdk.KEY_V):
+            act = "paste"
+        elif ctrl and keyval in (Gdk.KEY_z, Gdk.KEY_Z):
+            act = "undo"
+        elif keyval in (Gdk.KEY_Delete, Gdk.KEY_m, Gdk.KEY_M):
+            act = "silence"
+        elif keyval == Gdk.KEY_space:
+            act = "play"
+        elif keyval == Gdk.KEY_Escape:
+            self.selection = None
+            self.queue_draw()
+            return True
+        if act and self.on_action:
+            self.on_action(act)
+            return True
         lane = next((lane for lane in self.lanes if lane.obj is self.selected), None)
         if not lane or keyval not in (Gdk.KEY_Left, Gdk.KEY_Right):
             return False
@@ -286,6 +342,22 @@ class Timeline(AlbumChart):
                     cr.line_to(px + 0.5, mid + max(0.5, v))
                 cr.stroke()
             cr.restore()
+        # zaznaczenie
+        if self.selection:
+            obj, a, b = self.selection
+            for i, lane in enumerate(self.lanes):
+                if lane.obj is obj:
+                    y = RULER_H + i * (LANE_H + GAP)
+                    xa, xb = max(x0, self._x(a)), min(x0 + aw, self._x(b))
+                    if xb > xa:
+                        cr.set_source_rgba(1.0, 1.0, 1.0, 0.28)
+                        cr.rectangle(xa, y, xb - xa, LANE_H)
+                        cr.fill()
+                        cr.set_source_rgba(0.85, 0.35, 0.19, 0.9)
+                        cr.set_line_width(1)
+                        cr.rectangle(xa + 0.5, y + 0.5, xb - xa - 1, LANE_H - 1)
+                        cr.stroke()
+                        self._text(cr, xa + 4, y + 12, f"{b - a:.2f} s".replace(".", ","), 9, "left", 0.9)
         # pozycja odtwarzania
         px = self._x(self.position)
         if x0 <= px <= x0 + aw:

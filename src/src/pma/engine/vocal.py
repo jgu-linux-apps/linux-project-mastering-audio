@@ -438,7 +438,7 @@ def shift_pair(dry, wet, offset_ms, name=""):
     return r
 
 
-def merge(tracks, out_path, fs):
+def merge(tracks, out_path, fs, fmt="wav24"):
     """tracks: lista dict(dry, wet, volume_db, fx) – wet może być None (podkład). Sumuje dokładnie tak jak
     odsłuch na żywo, potem zabezpiecza szczyty (limiter true-peak -1 dBTP tylko gdy potrzeba). WAV 24 bit."""
     parts = []
@@ -465,10 +465,105 @@ def merge(tracks, out_path, fs):
         mix, lim = dsp.limiter(mix, fs, CEILING_DBTP - 0.05, lookahead_ms=1.5, release_ms=60)
         L.log(f"limiter true-peak: redukcja {lim:.2f} dB -> {CEILING_DBTP} dBTP", "warn", tag="merge")
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
-    sf.write(out_path, mix, fs, subtype="PCM_24")
-    L.log(f"zapisano {os.path.basename(out_path)} (WAV 24 bit, {fs} Hz)", "ok", tag="merge")
+    _write_mix(mix, fs, out_path, fmt)
     return dict(path=out_path, lufs=dsp.integrated_lufs(mix, fs), true_peak=dsp.true_peak_db(mix),
                 limited_db=lim, peak_before=tp_before, seconds=n / fs)
+
+
+MERGE_FORMATS = ["wav24", "wav16", "mp3_320", "mp3_256", "mp3_192"]
+
+
+def _write_mix(mix, fs, out_path, fmt):
+    """WAV 24 bit / WAV 16 bit (44,1 kHz z ditherem) / MP3 (kodowanie, kontrola szczytów po dekodowaniu)."""
+    from .common import safety_limit, to_rate
+    from . import export as E
+    if fmt == "wav24":
+        sf.write(out_path, mix, fs, subtype="PCM_24")
+    elif fmt == "wav16":
+        y = safety_limit(to_rate(mix, fs, 44100), 44100, CEILING_DBTP)
+        sf.write(out_path, E.tpdf_16(y), 44100, subtype="PCM_16")
+    else:
+        import subprocess
+        import tempfile
+        rate = fmt.split("_")[1]
+        y = safety_limit(to_rate(mix, fs, 44100), 44100, CEILING_DBTP)
+        trim = 0.0
+        with tempfile.TemporaryDirectory(prefix="pma-") as tmp:
+            for _ in range(4):
+                wav = os.path.join(tmp, "mix.wav")
+                sf.write(wav, (y * dsp.undb(trim)).astype(np.float32), 44100, subtype="FLOAT")
+                subprocess.run([E.FFMPEG, "-v", "error", "-y", "-i", wav, "-c:a", "libmp3lame", "-b:a", rate + "k",
+                                "-id3v2_version", "3", out_path], check=True, capture_output=True)
+                tp = dsp.true_peak_db(E._decode(out_path))
+                if tp <= CEILING_DBTP:
+                    break
+                trim -= tp - CEILING_DBTP + 0.1
+    L.log(f"zapisano {os.path.basename(out_path)} ({fmt}, {fs} Hz)", "ok", tag="merge")
+
+
+# ------------------------------------------------------------------ edycja na osi czasu
+def _edit_one(path, ops, sources, which, fs_hint=None):
+    """ops: lista ('silence', a, b) albo ('paste', src_path, a, b, dest) w sekundach czasu ścieżki (bez offsetu).
+    sources: {src_path: (dry, wet)} – przetworzone pliki ścieżek, z których kopiujemy."""
+    x, fs = sf.read(path, dtype="float32", always_2d=True)
+    x = x.copy()
+    fade = max(1, int(0.005 * fs))                      # 5 ms – bez trzasków na brzegach
+
+    def ramp(n, up):
+        r = np.linspace(0, 1, n, dtype=np.float32) if up else np.linspace(1, 0, n, dtype=np.float32)
+        return r[:, None]
+    for op in ops:
+        if op[0] == "silence":
+            a, b = int(op[1] * fs), int(op[2] * fs)
+            a, b = max(0, a), min(len(x), b)
+            if b <= a:
+                continue
+            f = min(fade, (b - a) // 2)
+            x[a:b] = 0
+            if f and a - f >= 0:
+                x[a - f:a] *= ramp(f, False)
+            if f and b + f <= len(x):
+                x[b:b + f] *= ramp(f, True)
+        elif op[0] == "paste":
+            src = sources.get(op[1])
+            if not src:
+                continue
+            y, _ = sf.read(src[which], dtype="float32", always_2d=True)
+            a, b, d = int(op[2] * fs), int(op[3] * fs), int(op[4] * fs)
+            seg = y[max(0, a):min(len(y), b)].copy()
+            if not len(seg) or d < 0:
+                continue
+            f = min(fade, len(seg) // 2)
+            if f:
+                seg[:f] *= ramp(f, True)
+                seg[-f:] *= ramp(f, False)
+            if d + len(seg) > len(x):
+                x = np.concatenate([x, np.zeros((d + len(seg) - len(x), x.shape[1]), np.float32)])
+            if seg.shape[1] != x.shape[1]:
+                seg = np.repeat(seg[:, :1], x.shape[1], axis=1)
+            x[d:d + len(seg)] = seg                      # wklejenie zastępuje to, co było w tym miejscu
+    return x, fs
+
+
+def prepare_track(dry, wet, ops, sources, offset_ms, name=""):
+    """Gotowe pliki dla miksera: przetworzona ścieżka -> edycje z osi czasu -> przesunięcie.
+    Zwraca dict(dry, wet, peaks, duration) – fala liczona po edycji, przed przesunięciem."""
+    ed_dry, ed_wet = dry, wet
+    if ops:
+        key = hashlib.sha1(json.dumps([dry, wet, ops, {k: list(v) for k, v in sorted(sources.items())},
+                                       [os.path.getmtime(p) for v in sources.values() for p in v]],
+                                      default=str).encode()).hexdigest()[:16]
+        d = os.path.dirname(dry)
+        ed_dry, ed_wet = os.path.join(d, f"edit_{key}_dry.wav"), os.path.join(d, f"edit_{key}_wet.wav")
+        if not (os.path.exists(ed_dry) and os.path.exists(ed_wet)):
+            for src, out, which in ((dry, ed_dry, 0), (wet, ed_wet, 1)):
+                x, fs = _edit_one(src, ops, sources, which)
+                sf.write(out + ".tmp.wav", x, fs, subtype="FLOAT")
+                os.replace(out + ".tmp.wav", out)
+            L.log(f"{name}: edycje na osi czasu ({len(ops)})", tag="vocal")
+    pk, dur = peaks(ed_dry)
+    a, b = shift_pair(ed_dry, ed_wet, offset_ms, name) if abs(offset_ms) >= 0.5 else (ed_dry, ed_wet)
+    return dict(dry=a, wet=b, peaks=pk, duration=dur)
 
 
 PEAK_HOP_S = 0.01      # jeden punkt fali na 10 ms – wystarcza też przy dużym przybliżeniu osi czasu
