@@ -92,10 +92,11 @@ def _motion(style, beat, fs, L_s, beats, seed):
     return p, g
 
 
-def render_scratch(sample, fs, bpm, style="mix", beats=4, seed=7):
-    """sample: (n, ch) – próbka (początek zaznaczenia). Zwraca skrecz o długości `beats` uderzeń."""
+def render_scratch(sample, fs, bpm, style="mix", beats=4, seed=7, max_range=None):
+    """sample: (n, ch) – próbka (początek zaznaczenia albo całe zaznaczenie). Zwraca skrecz o długości `beats` uderzeń.
+    max_range: zakres ruchu płyty w sekundach (domyślnie ≤ jedno uderzenie; „całe zaznaczenie” – cała próbka)."""
     beat = 60.0 / bpm
-    L_s = min(len(sample) / fs, beat * 0.9)                  # zakres ruchu płyty ≤ jedno uderzenie
+    L_s = min(len(sample) / fs, max_range if max_range else beat * 0.9)
     p, g = _motion(style, beat, fs, L_s, beats, seed)
     v = np.abs(np.gradient(p) * fs)                          # prędkość (1 = normalnie)
     vol = np.clip(v / 1.2, 0, 1) ** 0.6                      # wolno = ciszej, jak na winylu

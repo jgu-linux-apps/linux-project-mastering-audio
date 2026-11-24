@@ -537,7 +537,9 @@ class VocalPage(Gtk.Box):
         beats_opts = [1, 2, 4, 8]
         beats = Adw.ComboRow(title=tr("sc_beats"), model=Gtk.StringList.new([str(b) for b in beats_opts]))
         beats.set_selected(2)
-        for r in (bpm_row, style, beats):
+        beats.set_subtitle(tr("sc_beats_sub", s=span[1] - span[0]))
+        rng = Adw.ComboRow(title=tr("sc_range"), model=Gtk.StringList.new([tr("sc_range_start"), tr("sc_range_all")]))
+        for r in (bpm_row, style, beats, rng):
             grp.add(r)
         d.set_extra_child(grp)
         d.add_response("cancel", tr("cancel"))
@@ -571,7 +573,8 @@ class VocalPage(Gtk.Box):
             self._bpm = bpm
             key = SC.STYLES[style.get_selected()]
             n = beats_opts[beats.get_selected()]
-            self._edit_many([(t, ["scratch", a, bb, bpm, key, n]) for t, a, bb in items])
+            whole = "all" if rng.get_selected() == 1 else "start"
+            self._edit_many([(t, ["scratch", a, bb, bpm, key, n, whole]) for t, a, bb in items])
             self.win.toast(tr("sc_done", n=n, bpm=bpm, style=tr("sc_s_" + key)))
         d.connect("response", resp)
         d.present(self.win)

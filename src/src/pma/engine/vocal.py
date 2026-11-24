@@ -94,8 +94,11 @@ PRESETS = {
         reverb=dict(size_s=0.8, predelay_ms=10, damp_hz=4000, mix=0.7),
         delay=dict(time_ms=250, feedback=0.25, pingpong=False, mix=0.4), fx_default=25),
 }
+# SAMPLE: bez obróbki – np. kilka sekund innej piosenki do skreczowania; tylko wyrównany poziom, bez efektu
+PRESETS["sample"] = VocalPreset("sample", hp=0, eq=[], deess=60.0, comp_thr=0.0, comp_ratio=1.0, attack_ms=10,
+                                release_ms=100, saturation=0.0, reverb={}, delay={}, fx_default=0)
 PRESET_ORDER = ["studio", "radio", "warm", "space", "rap", "pop", "acoustic", "rnb", "podcast", "lofi", "autotune",
-                "manual"]
+                "sample", "manual"]
 
 # MANUAL: suwaki w kaflach (zakładka Wokal). Wartości startowe = „Studio”.
 MANUAL_DEFAULT = dict(lowcut=90.0, body=0.0, mud=-2.0, presence=2.0, air=2.5,
@@ -316,6 +319,11 @@ def render_wet(dry, fs, p, name=""):
 
 
 def process_dry(x, fs, p, name=""):
+    if p.key == "sample":                                  # bez obróbki: tylko poziom jak pozostałe ścieżki
+        x = x.astype(np.float32)
+        lv = dsp.integrated_lufs(x, fs)
+        L.log(f"{name}: sample bez obróbki ({lv:.1f} LUFS)", tag="vocal")
+        return (x * dsp.undb(DRY_LUFS - lv)).astype(np.float32) if lv > -69 else x
     x = dsp.apply_sos(x.astype(np.float32), [dsp.highpass(fs, p.hp, 2)])
     if p.tune > 0:
         x, voiced = autotune(x, fs, p.tune)
@@ -543,19 +551,31 @@ def _edit_one(path, ops, sources, which, fs_hint=None):
             if seg.shape[1] != x.shape[1]:
                 seg = np.repeat(seg[:, :1], x.shape[1], axis=1)
             x[d:d + len(seg)] = seg                      # wklejenie zastępuje to, co było w tym miejscu
-        elif op[0] == "scratch":                          # ("scratch", od, do, bpm, styl, uderzenia)
+        elif op[0] == "scratch":                          # ("scratch", od, do, bpm, styl, uderzenia[, próbka])
             from .scratch import render_scratch
-            a, b = int(op[1] * fs), int(op[2] * fs)
+            a, b = max(0, int(op[1] * fs)), min(len(x), int(op[2] * fs))
             bpm, style, beats = float(op[3]), op[4], int(op[5])
-            smp = x[max(0, a):min(len(x), b, a + int(60.0 / bpm * fs))].copy()   # początek zaznaczenia
-            if len(smp) < int(0.03 * fs):
+            whole = len(op) > 6 and op[6] == "all"
+            beat_n = int(60.0 / bpm * fs)
+            region = min(beats * beat_n, b - a)           # skrecz tylko w zaznaczeniu – dalej wokal zostaje
+            if region < int(0.05 * fs):
                 continue
-            sc = render_scratch(smp, fs, bpm, style, beats, seed=int(op[1] * 1000) % 9973)
+            smp = x[a:b].copy() if whole else x[a:min(b, a + beat_n)].copy()
+            n_beats = max(1, int(np.ceil(region / beat_n)))
+            sc = render_scratch(smp, fs, bpm, style, n_beats, seed=int(op[1] * 1000) % 9973,
+                                max_range=(len(smp) / fs) if whole else None)[:region]
             if sc.shape[1] != x.shape[1]:
                 sc = np.repeat(sc[:, :1], x.shape[1], axis=1)
-            if a + len(sc) > len(x):
-                x = np.concatenate([x, np.zeros((a + len(sc) - len(x), x.shape[1]), np.float32)])
-            x[a:a + len(sc)] = sc                         # skrecz zastępuje fragment od początku zaznaczenia
+            orig = x[a:a + region].copy()
+            fi = min(int(0.010 * fs), region // 4)          # łagodne wejście
+            fo = min(int(0.060 * fs), region // 3)          # przejście skrecz -> oryginalny wokal (stała moc)
+            if fi:
+                r = np.linspace(0, 1, fi, dtype=np.float32)[:, None]
+                sc[:fi] = sc[:fi] * r + orig[:fi] * (1 - r)
+            if fo:
+                th = np.linspace(0, np.pi / 2, fo, dtype=np.float32)[:, None]
+                sc[-fo:] = sc[-fo:] * np.cos(th) + orig[-fo:] * np.sin(th)
+            x[a:a + region] = sc
     return x, fs
 
 

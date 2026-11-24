@@ -786,6 +786,32 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'vp_sample': 'Sample',
+    'vp_sample_d': 'Bez obróbki – np. fragment innej piosenki do skreczu',
+})
+S["en"].update({
+    'vp_sample': 'Sample',
+    'vp_sample_d': 'Unprocessed – e.g. a piece of another song to scratch',
+})
+
+
+S["pl"].update({
+    'sc_body': 'Skrecz powstaje w zaznaczeniu i kończy się płynnym przejściem w dalszy wokal – reszta ścieżki zostaje. Zaznacz początek frazy (1–2 uderzenia), zaczynając na uderzeniu bitu.',
+    'sc_beats_sub': 'Najwyżej długość zaznaczenia ({s:.2f} s)',
+    'sc_range': 'Próbka',
+    'sc_range_start': 'Początek zaznaczenia (1 uderzenie)',
+    'sc_range_all': 'Całe zaznaczenie',
+})
+S["en"].update({
+    'sc_body': 'The scratch is made inside the selection and blends smoothly into the rest of the vocal – the rest of the track stays. Select the start of a phrase (1–2 beats), starting on a beat.',
+    'sc_beats_sub': 'At most the selection length ({s:.2f} s)',
+    'sc_range': 'Sample',
+    'sc_range_start': 'Start of the selection (1 beat)',
+    'sc_range_all': 'Whole selection',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:

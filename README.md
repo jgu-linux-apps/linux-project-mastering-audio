@@ -31,6 +31,7 @@ It is not another Audacity – just what you need. The interface is available in
    | **Speech** | podcast, voice-over – dry and clear | no effect (0%) |
    | **Lo-fi** | narrow band, saturation, vintage | small reverb + echo (25%) |
    | **AUTO-TUNE** | hard pitch correction – the robotic vocal effect | reverb + ping-pong echo (22%) |
+   | **Sample** | no processing at all – e.g. a piece of another song to scratch | – (0%) |
    | **MANUAL** | you set everything with sliders | – |
 
    Every option is a chain of: low-cut filter, mud/presence correction, a two-pass **de-esser** (tames s / sh / ch),
@@ -64,7 +65,9 @@ It is not another Audacity – just what you need. The interface is available in
    volume knob and the M button); Space plays / pauses.
    **Scratch** (toolbar): DJ scratches made from the start of the selection (about one beat, e.g. the first syllable),
    in time with the beat – the tempo is detected from the backing track (and can be adjusted); styles Baby, Chirp,
-   Transformer or Mix, 1–8 beats long; the scratch replaces the track from the start of the selection (Ctrl+Z undoes it).
+   Transformer or Mix, up to 8 beats; the scratch stays **inside the selection** and blends into the rest of the vocal
+   (60 ms crossfade), so select just the start of a phrase. Sample: the start of the selection (1 beat) or the whole
+   selection. To scratch a piece of another song, add it as a track with the **Sample** option (no processing).
    **Several tracks at once:** drag the selection up / down across lanes – Copy / Cut take the part from every selected
    track and Paste puts each back on its own track at the cursor, keeping their exact arrangement (Cut + Paste moves a
    whole block); one Ctrl+Z undoes the whole block.
@@ -202,6 +205,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.11.0** – **Sample** track option (no processing – e.g. a piece of another song to scratch); scratches stay inside the selection and blend smoothly into the rest of the vocal; scratch sample can be the start or the whole selection.
 - **0.10.1** – ⏮ Back to start button next to Play (toolbar and player bar) and the Home key.
 - **0.10.0** – Vocals: **Scratch** – DJ scratches from the start of a selection, synced to the tempo detected from the backing track (Baby, Chirp, Transformer, Mix; 1–8 beats).
 - **0.9.2** – the timeline toolbar is pinned at the top of the Vocals tab (always visible, like in Audacity); dragging a clip that is part of a multi-track selection moves all selected tracks together (one Ctrl+Z undoes it).
