@@ -171,9 +171,10 @@ def codec_preview(path, codec):
     if not os.path.exists(out):
         subprocess.run([FFMPEG, "-v", "error", "-y", "-i", path, "-map", "0:a:0", "-ar", "48000"] + c["args"] + [enc],
                        check=True, capture_output=True)
-        subprocess.run([FFMPEG, "-v", "error", "-y", "-i", enc, "-c:a", "pcm_f32le", out + ".tmp.wav"],
+        tmp = f"{out}.{os.getpid()}.tmp.wav"
+        subprocess.run([FFMPEG, "-v", "error", "-y", "-i", enc, "-c:a", "pcm_f32le", tmp],
                        check=True, capture_output=True)
-        os.replace(out + ".tmp.wav", out)
+        os.replace(tmp, out)
         try:
             os.remove(enc)
         except OSError:

@@ -30,6 +30,7 @@ class LiveMixer:
         self._seek_to = None      # cel przewijania czekający na wykonanie (suwak w ruchu)
         self._seek_src = 0
         self._wd = (0.0, 0.0)     # strażnik: (ostatnia pozycja, kiedy ostatnio się zmieniła)
+        self.master_db = 0.0      # automatyczny zapas: suma wielu ścieżek + bit nie przesterowuje odsłuchu
 
     # ------------------------------------------------------------ budowa
     def set_tracks(self, tracks):
@@ -41,7 +42,7 @@ class LiveMixer:
             self._notify()
             return
         sink = "fakesink sync=true" if os.environ.get("PMA_FAKESINK") else "autoaudiosink"
-        parts = [f"audiomixer name=mix ! audioconvert ! audio/x-raw,format=F32LE ! "
+        parts = [f"audiomixer name=mix ! audioconvert ! audio/x-raw,format=F32LE ! volume name=master ! "
                  f"level name=lvl interval=60000000 post-messages=true ! audioconvert ! {sink}"]
         for i, t in enumerate(self.tracks):
             for kind in ("dry", "wet") if t.wet else ("dry",):
@@ -54,6 +55,9 @@ class LiveMixer:
         bus.connect("message::error", self._err)
         bus.connect("message::element", self._element)
         self.update_volumes()
+        m = self.pipe.get_by_name("master")
+        if m is not None:
+            m.set_property("volume", 10 ** (self.master_db / 20))
         self.pipe.set_state(Gst.State.PAUSED)
         self.pipe.get_state(3 * Gst.SECOND)
         self._dur = 0.0
@@ -196,7 +200,28 @@ class LiveMixer:
             m = re.search(r"peak=\([^)]*\)[{<]([^}>]*)[}>]", s.to_string())
             if m:
                 vals = [float(v) for v in m.group(1).split(",") if v.strip()]
-                self.on_level(max(vals) if vals else -90.0)
+                peak = max(vals) if vals else -90.0
+                self._headroom(peak)
+                self.on_level(peak)
+
+    def _headroom(self, peak):
+        """Szczyt sumy blisko 0 dBFS -> całość szybko ciszej; potem powoli wraca (ok. 1 dB/s), max 0 dB.
+        Wszystkie ścieżki tak samo – proporcje wokal / bit się nie zmieniają."""
+        if not self.pipe:
+            return
+        el = self.pipe.get_by_name("master")
+        if el is None:
+            return
+        import time as _t
+        now = _t.monotonic()
+        if peak > -1.0:
+            self.master_db = max(-24.0, self.master_db - (peak + 1.0) - 0.5)
+            self._last_peak = now
+        elif peak < -3.0 and self.master_db < 0 and now - getattr(self, "_last_peak", 0) > 3.0:
+            self.master_db = min(0.0, self.master_db + 0.012)          # ok. 0,2 dB/s, po 3 s bez szczytów
+        else:
+            return
+        el.set_property("volume", 10 ** (self.master_db / 20))
 
     def _notify(self):
         if self.on_state:

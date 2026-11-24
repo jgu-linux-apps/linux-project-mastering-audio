@@ -101,6 +101,7 @@ def loudness_curves(path):
     """Głośność chwilowa (400 ms) i krótkookresowa (3 s) co 100 ms + zintegrowana – liczona raz,
     a w trakcie odsłuchu tylko odczytywana dla bieżącej pozycji (dokładnie wg EBU R128)."""
     from . import dsp
+    from .common import atomic_write
     from .common import load
     from .export import _decode
     try:
@@ -127,6 +128,7 @@ def preview_excerpt(path, master_key, gain_db, ceil, seconds=20.0):
     import numpy as np
     import soundfile as sf
     from . import dsp, master
+    from .common import atomic_write
     from .common import load
     key = hashlib.sha1(f"{path}|{os.path.getmtime(path)}|{master_key}|{gain_db:.2f}|{ceil}|{seconds}|v1"
                        .encode()).hexdigest()[:16]
@@ -147,10 +149,8 @@ def preview_excerpt(path, master_key, gain_db, ceil, seconds=20.0):
         y = (y * dsp.undb(gain_db)).astype(np.float32)
         if dsp.true_peak_db(y) > ceil:
             y, _ = N._protect(y, fs, ceil)
-        sf.write(pa + ".tmp.wav", seg, fs, subtype="FLOAT")
-        sf.write(pb + ".tmp.wav", y, fs, subtype="FLOAT")
-        os.replace(pa + ".tmp.wav", pa)
-        os.replace(pb + ".tmp.wav", pb)
+        atomic_write(pa, seg, fs, "FLOAT")
+        atomic_write(pb, y, fs, "FLOAT")
     L.log(f"próbka {os.path.basename(path)}: {start / fs:.0f}–{(start + n) / fs:.0f} s, mastering {master_key}, "
           f"wzmocnienie {gain_db:+.1f} dB", tag="preview")
     yb, _ = sf.read(pb, dtype="float32", always_2d=True)

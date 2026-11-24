@@ -1178,7 +1178,7 @@ class VocalPage(Gtk.Box):
             self._remix()
             return False
         self._post(t)
-        for o in self.tracks:                       # ścieżki z wklejkami z tej ścieżki – źródło się zmieniło
+        for o in ([] if isinstance(t, Clip) else self.tracks):   # ścieżki z wklejkami z tej ścieżki – źródło się zmieniło
             if o is not t and o.raw and any(op[0] == "paste" and op[1] == t.path for op in o.ops):
                 self._post(o)
         return False

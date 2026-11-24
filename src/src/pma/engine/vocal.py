@@ -13,6 +13,7 @@ import soundfile as sf
 from scipy import signal
 
 from . import dsp
+from .common import atomic_write
 from .. import log as L
 from ..i18n import count
 
@@ -378,10 +379,8 @@ def render_track(path, preset_key, fs_target, manual=None):
     p = get_preset(preset_key, manual)
     dry = process_dry(x, fs, p, name)
     wet = render_wet(dry, fs, p, name)
-    sf.write(dry_p + ".tmp.wav", dry, fs, subtype="FLOAT")
-    sf.write(wet_p + ".tmp.wav", wet, fs, subtype="FLOAT")
-    os.replace(dry_p + ".tmp.wav", dry_p)
-    os.replace(wet_p + ".tmp.wav", wet_p)
+    atomic_write(dry_p, dry, fs, "FLOAT")
+    atomic_write(wet_p, wet, fs, "FLOAT")
     L.log(f"{name}: gotowe w {time.time() - t0:.1f} s", "ok", tag="vocal")
     return dry_p, wet_p, len(dry) / fs
 
@@ -414,8 +413,7 @@ def prepare_backing(path, fs_target):
     lufs = dsp.integrated_lufs(x, fs_target)
     g = BACKING_LUFS - lufs if lufs > -70 else 0.0
     x = (x * dsp.undb(g)).astype(np.float32)
-    sf.write(out + ".tmp.wav", x, fs_target, subtype="FLOAT")
-    os.replace(out + ".tmp.wav", out)
+    atomic_write(out, x, fs_target, "FLOAT")
     L.log(f"podkład {os.path.basename(path)}: {len(x) / fs_target:.1f} s, {lufs:.1f} LUFS -> {BACKING_LUFS:.0f} LUFS "
           f"({g:+.1f} dB)", "ok", tag="vocal")
     return out, len(x) / fs_target
@@ -436,8 +434,7 @@ def shift_file(path, offset_ms):
         y = np.concatenate([np.zeros((n, x.shape[1]), np.float32), x])
     else:
         y = x[min(n, len(x) - 1):]
-    sf.write(out + ".tmp.wav", y, fs, subtype="FLOAT")
-    os.replace(out + ".tmp.wav", out)
+    atomic_write(out, y, fs, "FLOAT")
     return out
 
 
@@ -604,8 +601,7 @@ def prepare_track(dry, wet, ops, sources, offset_ms, name=""):
         if not (os.path.exists(ed_dry) and os.path.exists(ed_wet)):
             for src, out, which in ((dry, ed_dry, 0), (wet, ed_wet, 1)):
                 x, fs = _edit_one(src, ops, sources, which)
-                sf.write(out + ".tmp.wav", x, fs, subtype="FLOAT")
-                os.replace(out + ".tmp.wav", out)
+                atomic_write(out, x, fs, "FLOAT")
             L.log(f"{name}: edycje na osi czasu ({len(ops)})", tag="vocal")
     pk, dur = peaks(ed_dry)
     a, b = shift_pair(ed_dry, ed_wet, offset_ms, name) if abs(offset_ms) >= 0.5 else (ed_dry, ed_wet)

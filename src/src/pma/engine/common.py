@@ -1,5 +1,6 @@
 """Wspólne narzędzia: wczytywanie, głośność głośnych fragmentów, zabezpieczenie szczytów, resampling."""
 import math
+import os
 
 import numpy as np
 import soundfile as sf
@@ -47,3 +48,13 @@ def to_rate(x, fs, new_fs):
         return x
     g = math.gcd(int(fs), int(new_fs))
     return signal.resample_poly(x.astype(np.float64), new_fs // g, fs // g, axis=0).astype(np.float32)
+
+
+def atomic_write(path, data, fs, subtype="FLOAT"):
+    """Zapis do cache przez unikalny plik tymczasowy (pid + losowy sufiks) i os.replace – kilka procesów
+    roboczych może liczyć ten sam plik naraz; wcześniej wspólna nazwa .tmp.wav kończyła się błędem."""
+    import soundfile as _sf
+    import uuid
+    tmp = f"{path}.{os.getpid()}.{uuid.uuid4().hex[:8]}.tmp.wav"
+    _sf.write(tmp, data, fs, subtype=subtype)
+    os.replace(tmp, path)
