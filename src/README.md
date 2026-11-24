@@ -196,6 +196,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.8.14** – sliders have bar-shaped handles (easier to grab); the mouse wheel over a slider or number field scrolls the page instead of changing the value.
 - **0.8.13** – timeline: clips can be dragged anywhere on the lane (offset up to ±10 minutes instead of ±2 s).
 - **0.8.12** – desktop entry without `TryExec`, so the Ubuntu dock (a snap that cannot see /usr/bin) lists the app again.
 - **0.8.11** – the Open project button in the title bar uses an open-folder icon (it looked like Copy).

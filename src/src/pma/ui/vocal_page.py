@@ -110,6 +110,7 @@ class VocalPage(Gtk.Box):
             getattr(col, f"set_margin_{m}")(28 if m in ("start", "end") else 24)
         page = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER,
                                   child=Adw.Clamp(maximum_size=3000, tightening_threshold=2600, child=col))
+        C.wheel_scrolls_page(page)
 
         g = Adw.PreferencesGroup(title=tr("v_style"), description=tr("v_style_sub"))
         cards = Gtk.FlowBox(selection_mode=Gtk.SelectionMode.NONE, homogeneous=True,

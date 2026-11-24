@@ -157,3 +157,17 @@ levelbar.peak-meter > trough {
 .manual-tile scale { margin-bottom: 2px; }
 .ab-quiet { opacity: 0.45; }
 .ab-stale { padding: 18px 16px; border-radius: 12px; background-color: alpha(@accent_bg_color, 0.12); }
+
+/* ---------- suwaki: pionowa kreska zamiast kropki – łatwiej chwycić ---------- */
+scale.horizontal > trough > slider {
+  min-width: 8px;
+  min-height: 24px;
+  margin: -10px 0;
+  border-radius: 4px;
+}
+scale.vertical > trough > slider {
+  min-width: 24px;
+  min-height: 8px;
+  margin: 0 -10px;
+  border-radius: 4px;
+}

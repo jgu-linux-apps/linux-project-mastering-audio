@@ -90,6 +90,7 @@ class AlbumPage(Gtk.Box):
         outer.append(self.ab_holder)
         clamp = Adw.Clamp(maximum_size=3000, tightening_threshold=2600, child=outer)
         page = Gtk.ScrolledWindow(hscrollbar_policy=Gtk.PolicyType.NEVER, child=clamp)
+        C.wheel_scrolls_page(page)
         tg = Adw.PreferencesGroup(title=tr("a_tracks"), description=tr("a_tracks_sub"))
         hb = Gtk.Box(spacing=4)
         for icon, tip, cb in (("list-add-symbolic", tr("add_files"), self.choose_files),

@@ -97,3 +97,32 @@ def bottom_bar(button_label, on_click):
 
 def open_folder(parent, path):
     Gtk.FileLauncher.new(Gio.File.new_for_path(path)).launch(parent, None, None)
+
+
+def wheel_scrolls_page(scrolled):
+    """Kółko myszy nad suwakiem / polem liczbowym przewija stronę zamiast zmieniać wartość
+    (przy przewijaniu strony z dołu na górę łatwo było niechcący przestawić ustawienia ścieżek)."""
+    ctl = Gtk.EventControllerScroll(flags=Gtk.EventControllerScrollFlags.VERTICAL,
+                                    propagation_phase=Gtk.PropagationPhase.CAPTURE)
+
+    pos = [None]
+    motion = Gtk.EventControllerMotion(propagation_phase=Gtk.PropagationPhase.CAPTURE)
+    motion.connect("motion", lambda _c, x, y: pos.__setitem__(0, (x, y)))
+    motion.connect("leave", lambda _c: pos.__setitem__(0, None))
+    scrolled.add_controller(motion)
+
+    def on_scroll(c, _dx, dy):
+        if pos[0] is None:
+            return False
+        w = scrolled.pick(*pos[0], Gtk.PickFlags.DEFAULT)
+        while w is not None and w is not scrolled:
+            if isinstance(w, (Gtk.Scale, Gtk.SpinButton)):
+                adj = scrolled.get_vadjustment()
+                step = 60 if c.get_unit() == Gdk.ScrollUnit.WHEEL else 1
+                adj.set_value(max(adj.get_lower(), min(adj.get_upper() - adj.get_page_size(),
+                                                       adj.get_value() + dy * step)))
+                return True
+            w = w.get_parent()
+        return False
+    ctl.connect("scroll", on_scroll)
+    scrolled.add_controller(ctl)
