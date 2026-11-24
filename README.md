@@ -69,6 +69,10 @@ It is not another Audacity – just what you need. The interface is available in
    Transformer or Mix, up to 8 beats; the scratch stays **inside the selection** and blends into the rest of the vocal
    (60 ms crossfade), so select just the start of a phrase. Sample: the start of the selection (1 beat) or the whole
    selection. To scratch a piece of another song, add it as a track with the **Sample** option (no processing).
+   **Genres and patterns:** the scratch window has a **Genre** (Basic, **RAP / HIP-HOP**) and a **Pattern** – RAP / HIP-HOP:
+   Boom bap baby, Chirps in 16ths, Transformer, Tear, Flare, Scribble, Drop on the “one” – laid out on a 16th-note grid,
+   1/2–8 bars long. The backing track's tempo, beat phase and “one” are detected (rap tempo kept within 80–110 BPM), so a
+   ready sound lands exactly on the nearest bar.
    **Scratch presets** (no vocal needed): “Aaah”, Stab, “Fresh”, 1 kHz tone or Kick – synthesized sounds scratched in the
    detected tempo and the chosen style / length, added as a new **Sample** track at the cursor.
    **Right-click** on the timeline opens a menu: Cut, Copy, Paste, Silence, Scratch… and **Delete** (the clip, the track
@@ -214,6 +218,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.14.0** – scratch genres and patterns: **RAP / HIP-HOP** library (boom bap baby, chirps, transformer, tear, flare, scribble, drop) on a 16th-note grid; beat grid detection (tempo, phase, “one”) so preset scratches land exactly on the nearest bar.
 - **0.13.1** – right-click menu on the timeline (Cut, Copy, Paste, Silence, Scratch…, Delete clip / track); Ctrl+Z undoes adding a scratch preset track and deleting a track.
 - **0.13.0** – scratch presets: ready synthesized sounds (“Aaah”, Stab, “Fresh”, 1 kHz tone, Kick) scratched in the beat's tempo and added as a new Sample track at the cursor – no vocal needed.
 - **0.12.3** – fix: tracks with clips could stay empty after opening a project (two workers wrote the same temporary file); live listening has automatic headroom, so many vocals + the beat no longer clip (the whole mix is turned down evenly, the vocal / beat balance stays).

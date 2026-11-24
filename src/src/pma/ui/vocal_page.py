@@ -647,64 +647,86 @@ class VocalPage(Gtk.Box):
 
     # ---------------------------------------------------------------- skrecze
     def scratch_dialog(self):
-        """Skrecz z początku zaznaczenia, w tempie bitu (BPM wykryte z podkładu, do poprawienia ręcznie)."""
+        """Skrecze: źródło (zaznaczony wokal albo gotowy dźwięk), gatunek i wzorzec na siatce bitu.
+        Tempo, faza uderzeń i „raz” wykrywane z podkładu; preset ląduje na najbliższym takcie."""
         items, span = self._sel_tracks()
         d = Adw.AlertDialog(heading=tr("sc_title"), body=tr("sc_body"))
         grp = Adw.PreferencesGroup()
         src_row = Adw.ComboRow(title=tr("sc_source"),
-                           model=Gtk.StringList.new([tr("sc_src_sel")] + [tr("sc_src_" + k) for k in SC.SOURCES]))
+                               model=Gtk.StringList.new([tr("sc_src_sel")] + [tr("sc_src_" + k) for k in SC.SOURCES]))
         src_row.set_selected(0 if items else 1)
         src_row.set_subtitle(tr("sc_src_sub"))
-        grp.add(src_row)
+        genres = list(SC.GENRES)
+        genre_row = Adw.ComboRow(title=tr("sc_genre"), model=Gtk.StringList.new([tr("sc_g_" + g) for g in genres]))
+        genre_row.set_selected(genres.index("rap"))
+        pat_row = Adw.ComboRow(title=tr("sc_pattern"))
         bpm_row = Adw.SpinRow.new_with_range(60, 200, 0.5)
         bpm_row.set_title(tr("sc_bpm"))
         bpm_row.set_digits(1)
         bpm_row.set_value(float(getattr(self, "_bpm", None) or 90.0))
-        style = Adw.ComboRow(title=tr("sc_style"), model=Gtk.StringList.new([tr("sc_s_" + k) for k in SC.STYLES]))
-        style.set_selected(SC.STYLES.index("mix"))
-        beats_opts = [1, 2, 4, 8]
-        beats = Adw.ComboRow(title=tr("sc_beats"), model=Gtk.StringList.new([str(b) for b in beats_opts]))
-        beats.set_selected(2)
+        bars_opts = [2, 4, 8, 16, 32]                      # w uderzeniach: ½ taktu, 1, 2, 4, 8 taktów
+        bars = Adw.ComboRow(title=tr("sc_len"), model=Gtk.StringList.new([tr("sc_len_" + str(b)) for b in bars_opts]))
+        bars.set_selected(1)
         if span:
-            beats.set_subtitle(tr("sc_beats_sub", s=span[1] - span[0]))
+            bars.set_subtitle(tr("sc_beats_sub", s=span[1] - span[0]))
         rng = Adw.ComboRow(title=tr("sc_range"), model=Gtk.StringList.new([tr("sc_range_start"), tr("sc_range_all")]))
-        for r in (bpm_row, style, beats, rng):
+        for r in (src_row, genre_row, pat_row, bpm_row, bars, rng):
             grp.add(r)
+
+        def fill_patterns(*_):
+            g = genres[genre_row.get_selected()]
+            pat_row.set_model(Gtk.StringList.new([tr("sc_p_" + k) for k in SC.GENRES[g]]))
+            pat_row.set_selected(0)
+            detect()
+
+        def sync_rows(*_):
+            rng.set_visible(src_row.get_selected() == 0)
+        src_row.connect("notify::selected", sync_rows)
+        genre_row.connect("notify::selected", fill_patterns)
         d.set_extra_child(grp)
         d.add_response("cancel", tr("cancel"))
         d.add_response("ok", tr("sc_apply"))
         d.set_response_appearance("ok", Adw.ResponseAppearance.SUGGESTED)
         d.set_default_response("ok")
-        b = self.backing
-        if b and b.raw and getattr(self, "_bpm_src", None) != b.raw:            # tempo z podkładu, w tle
+        grid = {"g": None}
+
+        def detect():
+            b = self.backing
+            if not (b and b.raw):
+                bpm_row.set_subtitle(tr("sc_no_bk"))
+                return
+            g = genres[genre_row.get_selected()]
             bpm_row.set_subtitle(tr("sc_detecting"))
-            src = b.raw
-            fut = self.ex.submit(SC.detect_bpm, src)
+            fut = self.ex.submit(SC.detect_grid, b.raw, g)
 
             def got(f):
                 try:
-                    self._bpm, self._bpm_src = f.result(), src
-                    bpm_row.set_value(self._bpm)
-                    bpm_row.set_subtitle(tr("sc_detected"))
+                    bpm, beat0, bar0 = f.result()
+                    off = b.offset_ms / 1000                  # siatka w czasie osi (podkład może być przesunięty)
+                    grid["g"] = (bpm, beat0 + off, bar0 + off)
+                    self._bpm = bpm
+                    bpm_row.set_value(bpm)
+                    bpm_row.set_subtitle(tr("sc_detected_grid", bar=bar0 + off))
                 except Exception:  # noqa: BLE001
                     bpm_row.set_subtitle(tr("sc_manual"))
                 return False
             fut.add_done_callback(lambda f: GLib.idle_add(got, f))
-        elif not b:
-            bpm_row.set_subtitle(tr("sc_no_bk"))
-        else:
-            bpm_row.set_subtitle(tr("sc_detected"))
+        fill_patterns()
+        sync_rows()
 
         def resp(_d, r):
             if r != "ok":
                 return
             bpm = bpm_row.get_value()
             self._bpm = bpm
-            key = SC.STYLES[style.get_selected()]
-            n = beats_opts[beats.get_selected()]
-            if src_row.get_selected() > 0:                       # gotowy preset -> nowa ścieżka Sample w miejscu kursora
+            key = SC.GENRES[genres[genre_row.get_selected()]][pat_row.get_selected()]
+            n = bars_opts[bars.get_selected()]
+            if src_row.get_selected() > 0:                       # gotowy dźwięk -> nowa ścieżka Sample na siatce
                 kind = SC.SOURCES[src_row.get_selected() - 1]
-                at = span[0] if span else self.timeline.position
+                at = span[0] if span else self.mixer.position()
+                g = grid["g"]
+                if g and abs(g[0] - bpm) < 0.01:                 # na najbliższy „raz” (wzorce) / uderzenie (style)
+                    at = SC.snap_to_grid(at, bpm, g[1], g[2], "bar" if key in SC.PATTERNS else "beat")
                 fut = self.ex.submit(SC.render_preset, kind, key, bpm, n, self.fs or 48000)
                 fut.add_done_callback(lambda f: GLib.idle_add(self._preset_ready, f, at, kind))
                 return
@@ -713,7 +735,7 @@ class VocalPage(Gtk.Box):
                 return
             whole = "all" if rng.get_selected() == 1 else "start"
             self._edit_many([(t, ["scratch", a, bb, bpm, key, n, whole]) for t, a, bb in items])
-            self.win.toast(tr("sc_done", n=n, bpm=bpm, style=tr("sc_s_" + key)))
+            self.win.toast(tr("sc_done", n=n, bpm=bpm, style=tr("sc_p_" + key)))
         d.connect("response", resp)
         d.present(self.win)
 

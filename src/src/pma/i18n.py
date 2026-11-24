@@ -868,6 +868,58 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'sc_genre': 'Gatunek',
+    'sc_g_basic': 'Podstawowe',
+    'sc_g_rap': 'RAP / HIP-HOP',
+    'sc_pattern': 'Wzorzec',
+    'sc_len': 'Długość',
+    'sc_len_2': '½ taktu (2 uderzenia)',
+    'sc_len_4': '1 takt',
+    'sc_len_8': '2 takty',
+    'sc_len_16': '4 takty',
+    'sc_len_32': '8 taktów',
+    'sc_detected_grid': 'Wykryte z podkładu („raz” w {bar:.2f} s) – preset trafi na najbliższy takt',
+    'sc_p_baby': 'Baby – tam i z powrotem',
+    'sc_p_chirp': 'Chirp – z crossfaderem',
+    'sc_p_transformer': 'Transformer – cięcia',
+    'sc_p_mix': 'Mix – wszystkie po kolei',
+    'sc_p_rap_boombap': 'Boom bap – baby w ósemkach',
+    'sc_p_rap_chirps': 'Chirpy w szesnastkach',
+    'sc_p_rap_transformer': 'Transformer (pół taktu tam, pół z powrotem)',
+    'sc_p_rap_tear': 'Tear – powrót w dwóch szarpnięciach',
+    'sc_p_rap_flare': 'Flare – klik crossfadera w każdą stronę',
+    'sc_p_rap_scribble': 'Scribble – drgania na końcu taktu',
+    'sc_p_rap_drop': 'Drop na „raz” + przewinięcie na końcu taktu',
+    'sc_body': 'Wybierz źródło: zaznaczony wokal albo gotowy dźwięk. Wzorce RAP / HIP-HOP są ułożone na siatce szesnastek, a gotowy dźwięk trafia na najbliższy „raz” taktu podkładu.',
+})
+S["en"].update({
+    'sc_genre': 'Genre',
+    'sc_g_basic': 'Basic',
+    'sc_g_rap': 'RAP / HIP-HOP',
+    'sc_pattern': 'Pattern',
+    'sc_len': 'Length',
+    'sc_len_2': '½ bar (2 beats)',
+    'sc_len_4': '1 bar',
+    'sc_len_8': '2 bars',
+    'sc_len_16': '4 bars',
+    'sc_len_32': '8 bars',
+    'sc_detected_grid': 'Detected from the backing track (“one” at {bar:.2f} s) – the preset lands on the nearest bar',
+    'sc_p_baby': 'Baby – back and forth',
+    'sc_p_chirp': 'Chirp – with the crossfader',
+    'sc_p_transformer': 'Transformer – cuts',
+    'sc_p_mix': 'Mix – all in turn',
+    'sc_p_rap_boombap': 'Boom bap – baby in 8ths',
+    'sc_p_rap_chirps': 'Chirps in 16ths',
+    'sc_p_rap_transformer': 'Transformer (half a bar forward, half back)',
+    'sc_p_rap_tear': 'Tear – return in two jerks',
+    'sc_p_rap_flare': 'Flare – one crossfader click each way',
+    'sc_p_rap_scribble': 'Scribble – shake at the end of the bar',
+    'sc_p_rap_drop': 'Drop on the “one” + rewind at the end of the bar',
+    'sc_body': "Choose the source: the selected vocal or a ready sound. RAP / HIP-HOP patterns sit on a 16th-note grid, and a ready sound lands on the nearest “one” of the backing track's bar.",
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:
