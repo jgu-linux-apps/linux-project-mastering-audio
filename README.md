@@ -196,6 +196,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.8.11** – the Open project button in the title bar uses an open-folder icon (it looked like Copy).
 - **0.8.10** – the app icon is shown in the Ubuntu dock again (the light / dark icon switch now uses the icon name instead of a file path).
 - **0.8.9** – timeline: horizontal scrollbar when zoomed in; the zoomed view follows the playback cursor.
 - **0.8.8** – timeline: precise selection with the keyboard (Shift + arrows = end, Ctrl + Shift + arrows = start, Alt = 1 ms steps), start / end / length shown on the selection.

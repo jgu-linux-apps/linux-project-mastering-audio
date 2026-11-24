@@ -50,7 +50,7 @@ class MainWindow(Adw.ApplicationWindow):
         hb.pack_end(Gtk.MenuButton(icon_name="open-menu-symbolic", menu_model=menu, primary=True))
         for icon, tip, cb in (("document-save-symbolic", tr("project_save") + " (Ctrl+S)",
                                lambda *_: self.save_project(self.project_path)),
-                              ("document-open-symbolic", tr("project_open") + " (Ctrl+O)", lambda *_: self.open_project()),
+                              ("folder-open-symbolic", tr("project_open") + " (Ctrl+O)", lambda *_: self.open_project()),
                               ("edit-clear-all-symbolic", tr("project_clear"), lambda *_: self.clear_project())):
             b = Gtk.Button(icon_name=icon, tooltip_text=tip)
             b.connect("clicked", cb)
