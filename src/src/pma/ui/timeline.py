@@ -7,7 +7,8 @@ import math
 import gi
 
 gi.require_version("Gtk", "4.0")
-from gi.repository import Gdk, Gtk  # noqa: E402
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gdk, Gtk  # noqa: E402
 
 from . import themes  # noqa: E402
 from .album_chart import AlbumChart, _minus  # noqa: E402
@@ -308,6 +309,8 @@ class Timeline(AlbumChart):
                 self._text(cr, x0 + 8, y + LANE_H / 2 + 4, "…", 10, "left", 0.5)
                 continue
             rgb = self._colors(lane.kind)
+            light = not Adw.StyleManager.get_default().get_dark()
+            ink = tuple(c * 0.55 for c in rgb) if light else rgb      # jasny tryb: ciemniejsza fala i obrys
             a, b = self._x(off / 1000), self._x(off / 1000 + lane.duration)
             ca, cb = max(a, x0), min(b, x0 + aw)
             if cb <= ca:
@@ -315,9 +318,9 @@ class Timeline(AlbumChart):
             cr.save()
             cr.rectangle(x0, y, aw, LANE_H)
             cr.clip()
-            cr.set_source_rgba(*rgb, 0.22 if sel else 0.14)
+            cr.set_source_rgba(*rgb, (0.16 if sel else 0.08) if light else (0.22 if sel else 0.14))
             self._bar(cr, a, y + LANE_H - 2, y + 2, b - a, min(rr, 5))
-            cr.set_source_rgba(*rgb, 1.0 if sel else 0.55)
+            cr.set_source_rgba(*ink, 1.0 if sel else 0.55)
             cr.set_line_width(2 if sel else 1)
             self._bar(cr, a + 0.5, y + LANE_H - 2.5, y + 2.5, b - a - 1, min(rr, 5), fill=False)
             cr.stroke()
@@ -326,7 +329,7 @@ class Timeline(AlbumChart):
                 amp = (LANE_H / 2 - 5) * DISPLAY_GAIN * 10 ** (getattr(lane.obj, "volume_db", 0.0) / 20)
                 if getattr(lane.obj, "mute", False):
                     amp = 0.0
-                cr.set_source_rgba(*rgb, 0.9)
+                cr.set_source_rgba(*ink, 0.95)
                 cr.set_line_width(1)
                 n = len(lane.peaks)
                 for px in range(int(ca), int(cb)):
@@ -348,7 +351,8 @@ class Timeline(AlbumChart):
                     y = RULER_H + i * (LANE_H + GAP)
                     xa, xb = max(x0, self._x(a)), min(x0 + aw, self._x(b))
                     if xb > xa:
-                        cr.set_source_rgba(1.0, 1.0, 1.0, 0.28)
+                        light = not Adw.StyleManager.get_default().get_dark()
+                        cr.set_source_rgba(*((0.85, 0.35, 0.19, 0.12) if light else (1.0, 1.0, 1.0, 0.28)))
                         cr.rectangle(xa, y, xb - xa, LANE_H)
                         cr.fill()
                         cr.set_source_rgba(0.85, 0.35, 0.19, 0.9)
