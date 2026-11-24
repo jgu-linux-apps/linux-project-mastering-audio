@@ -111,3 +111,57 @@ def render_scratch(sample, fs, bpm, style="mix", beats=4, seed=7, max_range=None
     if peak > 0:
         out *= min(1.5, ref / peak)                          # poziom jak oryginał
     return out.astype(np.float32)
+
+
+# ------------------------------------------------------------------ gotowe źródła skreczu (syntetyczne)
+SOURCES = ["ahh", "stab", "fresh", "tone", "kick"]
+OUT_DIR = os.path.join(os.path.expanduser("~/.local/share"), "linux-project-mastering-audio", "scratches")
+
+
+def synth_source(kind, fs, beat):
+    """Krótki dźwięk do skreczowania (ok. jedno uderzenie), wygenerowany – bez cudzych sampli."""
+    n = int(beat * fs)
+    t = np.arange(n) / fs
+    rng = np.random.default_rng(3)
+    env = np.minimum(1, t / 0.008) * np.exp(-t / (beat * 0.45))
+    if kind == "ahh":                                        # samogłoska „a” – piła przez formanty
+        f0 = 210 * (1 - 0.06 * t / beat)
+        src = signal.sawtooth(2 * np.pi * np.cumsum(f0) / fs)
+        x = np.zeros(n)
+        for fc, bw, g in ((800, 120, 1.0), (1200, 140, 0.6), (2600, 220, 0.3)):
+            x += g * signal.sosfilt(signal.butter(2, [fc - bw, fc + bw], "bandpass", fs=fs, output="sos"), src)
+    elif kind == "stab":                                     # akord molowy, jasny atak
+        x = sum(signal.sawtooth(2 * np.pi * f * t) * w for f, w in ((220, 1), (261.6, 0.8), (329.6, 0.7), (440, 0.5)))
+        x = signal.sosfilt(signal.butter(2, 4000, fs=fs, output="sos"), x)
+        env = np.minimum(1, t / 0.004) * np.exp(-t / (beat * 0.3))
+    elif kind == "fresh":                                    # „ffff” (szum) przechodzące w „esh”
+        noise = signal.sosfilt(signal.butter(2, [3000, 9000], "bandpass", fs=fs, output="sos"), rng.standard_normal(n))
+        vow = signal.sosfilt(signal.butter(2, [500, 2200], "bandpass", fs=fs, output="sos"),
+                             signal.sawtooth(2 * np.pi * 180 * t))
+        cut = int(0.12 * fs)
+        x = np.concatenate([noise[:cut] * 0.6, vow[cut:]])
+    elif kind == "tone":                                     # ton 1 kHz – klasyczny dźwięk do ćwiczeń
+        x = np.sin(2 * np.pi * 1000 * t)
+        env = np.minimum(1, t / 0.003) * np.minimum(1, (beat - t) / 0.01)
+    else:                                                    # kick
+        f = 45 + 110 * np.exp(-t / 0.03)
+        x = np.sin(2 * np.pi * np.cumsum(f) / fs)
+        env = np.exp(-t / 0.18)
+    x = x * env
+    x /= np.abs(x).max() + 1e-9
+    return (np.stack([x, x], axis=1) * 0.7).astype(np.float32)
+
+
+def render_preset(kind, style, bpm, beats, fs=48000):
+    """Gotowy plik skreczu z presetu (źródło + styl) w tempie bitu. Zwraca ścieżkę WAV (trwały katalog)."""
+    os.makedirs(OUT_DIR, exist_ok=True)
+    name = f"scratch_{kind}_{style}_{bpm:.1f}bpm_{beats}b.wav"
+    out = os.path.join(OUT_DIR, name)
+    if not os.path.exists(out):
+        beat = 60.0 / bpm
+        smp = synth_source(kind, fs, beat)
+        y = render_scratch(smp, fs, bpm, style, beats, seed=hash(kind) % 9973)
+        from .common import atomic_write
+        atomic_write(out, y, fs, "FLOAT")
+        L.log(f"skrecz z presetu: {kind}, {style}, {bpm:.1f} BPM, {beats} uderzeń", "ok", tag="scratch")
+    return out

@@ -826,6 +826,30 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'sc_source': 'Źródło',
+    'sc_src_sub': 'Zaznaczenie – skrecz z wokalu; preset – gotowy dźwięk na nowej ścieżce w miejscu kursora',
+    'sc_src_sel': 'Zaznaczenie (wokal)',
+    'sc_src_ahh': 'Preset: „Aaah” (wokalny okrzyk)',
+    'sc_src_stab': 'Preset: Stab (akord)',
+    'sc_src_fresh': 'Preset: „Fresh” (szum + głoska)',
+    'sc_src_tone': 'Preset: Ton 1 kHz',
+    'sc_src_kick': 'Preset: Kick (stopa)',
+    'sc_preset_added': 'Dodano skrecz {name} w {at} jako nową ścieżkę Sample',
+})
+S["en"].update({
+    'sc_source': 'Source',
+    'sc_src_sub': 'Selection – scratch the vocal; preset – a ready sound on a new track at the cursor',
+    'sc_src_sel': 'Selection (vocal)',
+    'sc_src_ahh': 'Preset: “Aaah” (vocal shout)',
+    'sc_src_stab': 'Preset: Stab (chord)',
+    'sc_src_fresh': 'Preset: “Fresh” (noise + vowel)',
+    'sc_src_tone': 'Preset: 1 kHz tone',
+    'sc_src_kick': 'Preset: Kick',
+    'sc_preset_added': 'Added {name} scratch at {at} as a new Sample track',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:

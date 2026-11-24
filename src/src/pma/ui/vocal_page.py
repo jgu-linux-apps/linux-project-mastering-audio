@@ -583,11 +583,13 @@ class VocalPage(Gtk.Box):
     def scratch_dialog(self):
         """Skrecz z początku zaznaczenia, w tempie bitu (BPM wykryte z podkładu, do poprawienia ręcznie)."""
         items, span = self._sel_tracks()
-        if not items:
-            self.win.toast(tr("sc_need_sel"))
-            return
         d = Adw.AlertDialog(heading=tr("sc_title"), body=tr("sc_body"))
         grp = Adw.PreferencesGroup()
+        src_row = Adw.ComboRow(title=tr("sc_source"),
+                           model=Gtk.StringList.new([tr("sc_src_sel")] + [tr("sc_src_" + k) for k in SC.SOURCES]))
+        src_row.set_selected(0 if items else 1)
+        src_row.set_subtitle(tr("sc_src_sub"))
+        grp.add(src_row)
         bpm_row = Adw.SpinRow.new_with_range(60, 200, 0.5)
         bpm_row.set_title(tr("sc_bpm"))
         bpm_row.set_digits(1)
@@ -597,7 +599,8 @@ class VocalPage(Gtk.Box):
         beats_opts = [1, 2, 4, 8]
         beats = Adw.ComboRow(title=tr("sc_beats"), model=Gtk.StringList.new([str(b) for b in beats_opts]))
         beats.set_selected(2)
-        beats.set_subtitle(tr("sc_beats_sub", s=span[1] - span[0]))
+        if span:
+            beats.set_subtitle(tr("sc_beats_sub", s=span[1] - span[0]))
         rng = Adw.ComboRow(title=tr("sc_range"), model=Gtk.StringList.new([tr("sc_range_start"), tr("sc_range_all")]))
         for r in (bpm_row, style, beats, rng):
             grp.add(r)
@@ -633,6 +636,15 @@ class VocalPage(Gtk.Box):
             self._bpm = bpm
             key = SC.STYLES[style.get_selected()]
             n = beats_opts[beats.get_selected()]
+            if src_row.get_selected() > 0:                       # gotowy preset -> nowa ścieżka Sample w miejscu kursora
+                kind = SC.SOURCES[src_row.get_selected() - 1]
+                at = span[0] if span else self.timeline.position
+                fut = self.ex.submit(SC.render_preset, kind, key, bpm, n, self.fs or 48000)
+                fut.add_done_callback(lambda f: GLib.idle_add(self._preset_ready, f, at, kind))
+                return
+            if not items:
+                self.win.toast(tr("sc_need_sel"))
+                return
             whole = "all" if rng.get_selected() == 1 else "start"
             self._edit_many([(t, ["scratch", a, bb, bpm, key, n, whole]) for t, a, bb in items])
             self.win.toast(tr("sc_done", n=n, bpm=bpm, style=tr("sc_s_" + key)))
@@ -644,6 +656,26 @@ class VocalPage(Gtk.Box):
             self._render(c)
         self._tl_refresh()
         self._remix()
+
+    def _preset_ready(self, fut, at, kind):
+        try:
+            path = fut.result()
+        except Exception as e:  # noqa: BLE001
+            self.win.toast(str(e))
+            return False
+        if len(self.tracks) >= MAX_TRACKS:
+            self.win.toast(f"Max {count(MAX_TRACKS, 'stem')}")
+            return False
+        if self.fs is None:
+            self.fs = 48000
+        t = VTrack(path, "sample")
+        t.offset_ms = round(at * 1000)
+        self.tracks.append(t)
+        self._rebuild()
+        self._render(t)
+        self._update()
+        self.win.toast(tr("sc_preset_added", name=tr("sc_src_" + kind), at=C.fmt_dur(at)))
+        return False
 
     def _edit(self, t, op):
         self._edit_many([(t, op)])
