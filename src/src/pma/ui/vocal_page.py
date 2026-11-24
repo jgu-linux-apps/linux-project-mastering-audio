@@ -84,6 +84,16 @@ class VocalPage(Gtk.Box):
         self.stack = Gtk.Stack(transition_type=Gtk.StackTransitionType.CROSSFADE, vexpand=True)
         self.stack.add_named(C.empty_page(tr("v_drop_title"), tr("v_drop_sub"), self.choose_files), "empty")
         self.stack.add_named(self._main(), "main")
+        bar = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        bar.add_css_class("tl-topbar")
+        self.tl_bar.set_margin_start(18)
+        self.tl_bar.set_margin_end(18)
+        self.tl_bar.set_margin_top(4)
+        self.tl_bar.set_margin_bottom(4)
+        bar.append(self.tl_bar)
+        bar.append(Gtk.Separator())
+        self.tl_topbar = bar
+        self.append(bar)
         self.append(self.stack)
         self.bottom, self.status, self.progress, self.merge_btn = C.bottom_bar(tr("merge"), self.start_merge)
         self.merge_bk_btn = Gtk.Button(label=tr("merge_bk_btn").upper(), tooltip_text=tr("merge_with_bk"))
@@ -273,7 +283,8 @@ class VocalPage(Gtk.Box):
         self.timeline.on_commit = lambda kind, obj, old: self._undo.append((kind, obj, old))
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class("card")
-        card.append(self._tl_toolbar())
+        # pasek narzędzi osi czasu jest przypięty na górze zakładki (zawsze widoczny), patrz __init__
+        self.tl_bar = self._tl_toolbar()
         for m in ("bottom", "start", "end"):
             getattr(self.timeline, f"set_margin_{m}")(10)
         card.append(self.timeline)
@@ -411,6 +422,14 @@ class VocalPage(Gtk.Box):
                     self._undo.append((kind, _o, _old))
             while self._undo:
                 kind, obj, old = self._undo.pop()
+                if kind == "offsets":                                     # przesunięcie całej grupy
+                    for o, prev in obj:
+                        if o is self.backing or o in self.tracks:
+                            self._tl_offset(o, prev)
+                    self.timeline.selection = None
+                    self.win.toast(tr("tl_undone_offset"))
+                    self.timeline.queue_draw()
+                    return
                 if kind == "ops":
                     tracks = [t for t in (obj if isinstance(obj, tuple) else (obj,)) if t in self.tracks and t.ops]
                     if not tracks:
@@ -1147,6 +1166,7 @@ class VocalPage(Gtk.Box):
         self.stack.set_visible_child_name("main" if has_any else "empty")
         self.bottom.set_visible(has_any)
         self.player_bar.set_visible(has_any)
+        self.tl_topbar.set_visible(has_any)
         rendering = any(t.dry is None and not t.error for t in self.tracks)
         ok = self._ready()
         self.merge_btn.set_sensitive(bool(ok) and not rendering and not self.busy)

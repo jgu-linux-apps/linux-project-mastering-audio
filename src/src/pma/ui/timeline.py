@@ -254,6 +254,11 @@ class Timeline(AlbumChart):
             return
         lane = self._clip_hit(x, y)
         self._drag = (lane, lane.obj.offset_ms) if lane else None
+        # klip należy do zaznaczenia kilku ścieżek -> przesuwa się cała zaznaczona grupa
+        self._group = None
+        if lane and self.selection and lane.obj in self.selection[0] and len(self.selection[0]) > 1:
+            self._group = ([(ln, ln.obj.offset_ms) for ln in self.lanes if ln.obj in self.selection[0]],
+                           self.selection)
         if lane:
             self.set_cursor(Gdk.Cursor.new_from_name("grabbing"))
 
@@ -287,6 +292,14 @@ class Timeline(AlbumChart):
         _x0, w = self._area()
         ms = start + dx / w * self._win()[1] * 1000
         self._set(lane, ms, final=False)
+        if getattr(self, "_group", None):
+            delta = lane.obj.offset_ms - start                      # po przyciąganiu – to samo dla wszystkich
+            members, (objs, a, b) = self._group
+            for ln, st in members:
+                if ln is not lane:
+                    ln.obj.offset_ms = float(max(OFFSET_RANGE[0], min(OFFSET_RANGE[1], st + delta)))
+            self.selection = (objs, max(0.0, a + delta / 1000), max(0.0, b + delta / 1000))
+            self.queue_draw()
 
     def _end(self, _g, _dx, _dy):
         if self._knob:
@@ -301,7 +314,14 @@ class Timeline(AlbumChart):
             lane, start = self._drag
             self._drag = None
             self.set_cursor(Gdk.Cursor.new_from_name("grab"))
-            if lane.obj.offset_ms != start:
+            group = getattr(self, "_group", None)
+            self._group = None
+            if group and lane.obj.offset_ms != start:
+                members, _sel = group
+                self._commit("offsets", tuple((ln.obj, st) for ln, st in members), None)
+                for ln, _st in members:
+                    self.on_offset(ln.obj, ln.obj.offset_ms)
+            elif lane.obj.offset_ms != start:
                 self._commit("offset", lane.obj, start)
                 self.on_offset(lane.obj, lane.obj.offset_ms)
 
