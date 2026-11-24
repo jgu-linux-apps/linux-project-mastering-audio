@@ -119,6 +119,9 @@ class App(Adw.Application):
         return False
 
     def _on_close(self, win):
+        if not win.busy and win.has_unsaved():          # niezapisany projekt – zapytaj przed wyjściem
+            win.ask_save_then(self.really_quit)
+            return True
         if win.busy:                      # mastering w toku – zapytaj
             d = Adw.AlertDialog(heading=tr("quit_busy_title"), body=tr("quit_busy_body"))
             d.add_response("cancel", tr("cancel"))

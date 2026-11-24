@@ -25,8 +25,9 @@ DISPLAY_GAIN = 1.6     # fala w prawdziwej skali: ścieżki na wspólnym poziomi
 class Lane:
     """Widok jednej ścieżki: obj ma .offset_ms; peaks/duration to fala BEZ przesunięcia."""
 
-    def __init__(self, obj, name, kind):
+    def __init__(self, obj, name, kind, parent=None):
         self.obj, self.name, self.kind = obj, name, kind     # kind: 'backing' | 'vocal'
+        self.parent = parent                                 # klip: tor (Lane), na którym leży
         self.peaks = None
         self.duration = 0.0
 
@@ -44,6 +45,7 @@ class Timeline(AlbumChart):
         self.selection = None            # (krotka ścieżek, początek, koniec) w sekundach osi czasu
         self._sel_drag = None
         self.lanes = []
+        self.clips = []
         self.items = [1]
         self.position = 0.0
         self.view = (0.0, 0.0)           # (początek, długość) widoku w sekundach; długość 0 = całość
@@ -75,22 +77,22 @@ class Timeline(AlbumChart):
         self._resize()
 
     # ---------------------------------------------------------------- dane
-    def set_lanes(self, lanes):
-        keep = {id(lane.obj): lane for lane in self.lanes}
-        new = []
-        for lane in lanes:
+    def set_lanes(self, lanes, clips=()):
+        """lanes: tory (ścieżki); clips: osobne klipy (wklejki) leżące na torach – Lane z parent=tor."""
+        keep = {id(lane.obj): lane for lane in list(self.lanes) + list(getattr(self, "clips", []))}
+        for lane in list(lanes) + list(clips):
             old = keep.get(id(lane.obj))
             if old and lane.peaks is None:
                 lane.peaks, lane.duration = old.peaks, old.duration
-            new.append(lane)
-        self.lanes = new
-        if self.selected not in [lane.obj for lane in self.lanes]:
+        self.lanes = list(lanes)
+        self.clips = list(clips)
+        if self.selected not in [lane.obj for lane in self.lanes + self.clips]:
             self.selected = None
         self._resize()
         self.queue_draw()
 
     def set_peaks(self, obj, peaks, duration):
-        for lane in self.lanes:
+        for lane in self.lanes + self.clips:
             if lane.obj is obj:
                 lane.peaks, lane.duration = peaks, duration
         self.queue_draw()
@@ -106,7 +108,7 @@ class Timeline(AlbumChart):
 
     # ---------------------------------------------------------------- geometria
     def _total(self):
-        ends = [lane.obj.offset_ms / 1000 + lane.duration for lane in self.lanes if lane.duration]
+        ends = [lane.obj.offset_ms / 1000 + lane.duration for lane in self.lanes + self.clips if lane.duration]
         return max([10.0] + ends) + 0.5
 
     def _win(self):
@@ -185,27 +187,39 @@ class Timeline(AlbumChart):
                 s_, e_ = min(s_, op[4]), max(e_, op[4] + op[3] - op[2])
         return s_, max(s_, min(e_, lane.duration))
 
+    def _row_items(self, row):
+        """Klipy toru (od wierzchu) i sama ścieżka."""
+        return [c for c in reversed(self.clips) if c.parent is row] + [row]
+
     def _clip_hit(self, x, y):
-        lane = self._lane_at(y)
-        if not lane or not lane.duration:
+        row = self._lane_at(y)
+        if not row:
             return None
-        s_, e_ = self._extent(lane)
-        a = self._x(lane.obj.offset_ms / 1000 + s_)
-        b = self._x(lane.obj.offset_ms / 1000 + e_)
-        return lane if a <= x <= b else None
+        for lane in self._row_items(row):
+            if not lane.duration:
+                continue
+            s_, e_ = self._extent(lane)
+            a = self._x(lane.obj.offset_ms / 1000 + s_)
+            b = self._x(lane.obj.offset_ms / 1000 + e_)
+            if a <= x <= b:
+                return lane
+        return None
 
     def _edge_hit(self, x, y):
         """Lewa / prawa krawędź klipu ścieżki wokalu (±6 px) -> (lane, 'l'|'r')."""
-        lane = self._lane_at(y)
-        if not lane or lane.kind != "vocal" or not lane.duration or x < LABEL_W:
+        row = self._lane_at(y)
+        if not row or row.kind != "vocal" or x < LABEL_W:
             return None
-        s_, e_ = self._extent(lane)
-        off = lane.obj.offset_ms / 1000
-        a, b = self._x(off + s_), self._x(off + e_)
-        if abs(x - a) <= 6:
-            return lane, "l"
-        if abs(x - b) <= 6:
-            return lane, "r"
+        for lane in self._row_items(row):
+            if not lane.duration:
+                continue
+            s_, e_ = self._extent(lane)
+            off = lane.obj.offset_ms / 1000
+            a, b = self._x(off + s_), self._x(off + e_)
+            if abs(x - a) <= 6:
+                return lane, "l"
+            if abs(x - b) <= 6:
+                return lane, "r"
         return None
 
     # ---------------------------------------------------------------- zdarzenia
@@ -467,7 +481,7 @@ class Timeline(AlbumChart):
             self.selection = (objs, round(a0, 3), round(b0, 3))
             self.queue_draw()
             return True
-        lane = next((lane for lane in self.lanes if lane.obj is self.selected), None)
+        lane = next((lane for lane in self.lanes + self.clips if lane.obj is self.selected), None)
         if not lane or keyval not in (Gdk.KEY_Left, Gdk.KEY_Right):
             return False
         step = 10 if state & Gdk.ModifierType.SHIFT_MASK else 1
@@ -546,7 +560,7 @@ class Timeline(AlbumChart):
         """Wszystko, od czego zależy warstwa fal i opisów (bez kursora odtwarzania i zaznaczenia)."""
         lanes = tuple((id(ln.obj), id(ln.peaks), ln.duration, ln.name, ln.obj.offset_ms, self._extent(ln),
                        getattr(ln.obj, "volume_db", 0), getattr(ln.obj, "mute", False),
-                       getattr(ln.obj, "solo", False), ln.obj is self.selected) for ln in self.lanes)
+                       getattr(ln.obj, "solo", False), ln.obj is self.selected) for ln in self.lanes + self.clips)
         return (w, h, self._win(), lanes, themes.CURRENT, Adw.StyleManager.get_default().get_dark(),
                 self.get_scale_factor(), str(self.get_color()))
 
@@ -594,44 +608,49 @@ class Timeline(AlbumChart):
             if not lane.duration:
                 self._text(cr, x0 + 8, y + LANE_H / 2 + 4, "…", 10, "left", 0.5)
                 continue
-            rgb = self._colors(lane.kind)
-            light = not Adw.StyleManager.get_default().get_dark()
-            ink = tuple(c * 0.55 for c in rgb) if light else rgb      # jasny tryb: ciemniejsza fala i obrys
-            ext_s, ext_e = self._extent(lane)
-            a, b = self._x(off / 1000 + ext_s), self._x(off / 1000 + ext_e)
-            ca, cb = max(a, x0), min(b, x0 + aw)
-            if cb <= ca:
-                continue
-            cr.save()
-            cr.rectangle(x0, y, aw, LANE_H)
-            cr.clip()
-            cr.set_source_rgba(*rgb, (0.16 if sel else 0.08) if light else (0.22 if sel else 0.14))
-            self._bar(cr, a, y + LANE_H - 2, y + 2, b - a, min(rr, 5))
-            cr.set_source_rgba(*ink, 1.0 if sel else 0.55)
-            cr.set_line_width(2 if sel else 1)
-            self._bar(cr, a + 0.5, y + LANE_H - 2.5, y + 2.5, b - a - 1, min(rr, 5), fill=False)
-            cr.stroke()
-            if lane.peaks is not None and len(lane.peaks):     # fala: jedna kreska na piksel, z suwakiem głośności
-                mid = y + LANE_H / 2
-                amp = (LANE_H / 2 - 5) * DISPLAY_GAIN * 10 ** (getattr(lane.obj, "volume_db", 0.0) / 20)
-                if getattr(lane.obj, "mute", False):
-                    amp = 0.0
-                elif self._any_solo() and not getattr(lane.obj, "solo", False):
-                    amp *= 0.25                                  # zagłuszona przez solo innej ścieżki
-                cr.set_source_rgba(*ink, 0.95)
-                cr.set_line_width(1)
-                n = len(lane.peaks)
-                for px in range(int(ca), int(cb)):
-                    t0 = self._t(px) - off / 1000
-                    t1 = self._t(px + 1) - off / 1000
-                    i0, i1 = int(t0 / PEAK_HOP_S), int(math.ceil(t1 / PEAK_HOP_S))
-                    if i1 <= 0 or i0 >= n:
-                        continue
-                    v = min(LANE_H / 2 - 3, float(lane.peaks[max(0, i0):max(i0 + 1, min(n, i1))].max()) * amp)
-                    cr.move_to(px + 0.5, mid - max(0.5, v))
-                    cr.line_to(px + 0.5, mid + max(0.5, v))
+            for lane in [lane] + [c for c in self.clips if c.parent is lane]:   # tor: ścieżka + jej klipy
+                sel = lane.obj is self.selected
+                off = lane.obj.offset_ms
+                if not lane.duration:
+                    continue
+                rgb = self._colors(lane.kind)
+                light = not Adw.StyleManager.get_default().get_dark()
+                ink = tuple(c * 0.55 for c in rgb) if light else rgb      # jasny tryb: ciemniejsza fala i obrys
+                ext_s, ext_e = self._extent(lane)
+                a, b = self._x(off / 1000 + ext_s), self._x(off / 1000 + ext_e)
+                ca, cb = max(a, x0), min(b, x0 + aw)
+                if cb <= ca:
+                    continue
+                cr.save()
+                cr.rectangle(x0, y, aw, LANE_H)
+                cr.clip()
+                cr.set_source_rgba(*rgb, (0.16 if sel else 0.08) if light else (0.22 if sel else 0.14))
+                self._bar(cr, a, y + LANE_H - 2, y + 2, b - a, min(rr, 5))
+                cr.set_source_rgba(*ink, 1.0 if sel else 0.55)
+                cr.set_line_width(2 if sel else 1)
+                self._bar(cr, a + 0.5, y + LANE_H - 2.5, y + 2.5, b - a - 1, min(rr, 5), fill=False)
                 cr.stroke()
-            cr.restore()
+                if lane.peaks is not None and len(lane.peaks):     # fala: jedna kreska na piksel, z suwakiem głośności
+                    mid = y + LANE_H / 2
+                    amp = (LANE_H / 2 - 5) * DISPLAY_GAIN * 10 ** (getattr(lane.obj, "volume_db", 0.0) / 20)
+                    if getattr(lane.obj, "mute", False):
+                        amp = 0.0
+                    elif self._any_solo() and not getattr(lane.obj, "solo", False):
+                        amp *= 0.25                                  # zagłuszona przez solo innej ścieżki
+                    cr.set_source_rgba(*ink, 0.95)
+                    cr.set_line_width(1)
+                    n = len(lane.peaks)
+                    for px in range(int(ca), int(cb)):
+                        t0 = self._t(px) - off / 1000
+                        t1 = self._t(px + 1) - off / 1000
+                        i0, i1 = int(t0 / PEAK_HOP_S), int(math.ceil(t1 / PEAK_HOP_S))
+                        if i1 <= 0 or i0 >= n:
+                            continue
+                        v = min(LANE_H / 2 - 3, float(lane.peaks[max(0, i0):max(i0 + 1, min(n, i1))].max()) * amp)
+                        cr.move_to(px + 0.5, mid - max(0.5, v))
+                        cr.line_to(px + 0.5, mid + max(0.5, v))
+                    cr.stroke()
+                cr.restore()
     def _draw_overlay(self, cr, w, h):
         x0, aw = self._area()
         # zaznaczenie

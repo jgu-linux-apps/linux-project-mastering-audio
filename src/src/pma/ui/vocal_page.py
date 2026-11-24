@@ -34,6 +34,7 @@ class VTrack:
         self.solo = False
         self.offset_ms = 0.0
         self.ops = []                       # edycje z osi czasu (wyciszenia, wklejenia) – czas ścieżki, bez offsetu
+        self.clips = []                     # osobne klipy (wklejki) na torze tej ścieżki
         self.dry = self.wet = None          # pliki dla miksera (już przesunięte o offset_ms)
         self.raw = None                     # (dry, wet) prosto z renderu – przed przesunięciem
         self.duration = 0.0
@@ -41,6 +42,26 @@ class VTrack:
         self.shift_token = 0
         self.error = ""
         self.w = {}
+
+
+class Clip(VTrack):
+    """Osobny klip na torze ścieżki (wklejony fragment): własne przesunięcie i przycięcie, a głośność, pogłos,
+    M i S – po torze (ścieżce-rodzicu). Dźwięk: przetworzony plik źródłowy, przycięty do fragmentu."""
+    _INHERIT = ("volume_db", "fx", "mute", "solo")
+
+    def __init__(self, parent, path, preset):
+        object.__setattr__(self, "parent", parent)
+        super().__init__(path, preset)
+
+    def __getattribute__(self, name):
+        if name in Clip._INHERIT:
+            return getattr(object.__getattribute__(self, "parent"), name)
+        return object.__getattribute__(self, name)
+
+    def __setattr__(self, name, value):
+        if name in Clip._INHERIT:
+            return                                          # ustawienia toru – klip ich nie nadpisuje
+        object.__setattr__(self, name, value)
 
 
 class Backing:
@@ -281,8 +302,8 @@ class VocalPage(Gtk.Box):
         self.timeline = Timeline(on_offset=self._tl_offset, on_seek=lambda t: self.mixer.seek(t),
                                  on_action=self.tl_action, on_volume=self._tl_volume,
                                  on_mute=self._tl_mute, on_solo=self._tl_solo)
-        self.timeline.on_commit = lambda kind, obj, old: self._undo.append((kind, obj, old))
-        self.timeline.on_trim = lambda t, a, b: t in self.tracks and self._edit(t, ["trim", a, b])
+        self.timeline.on_commit = lambda kind, obj, old: self._push_undo((kind, obj, old))
+        self.timeline.on_trim = lambda t, a, b: t in self._all() and self._edit(t, ["trim", a, b])
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class("card")
         # pasek narzędzi osi czasu jest przypięty na górze zakładki (zawsze widoczny), patrz __init__
@@ -420,25 +441,19 @@ class VocalPage(Gtk.Box):
         if self.busy:
             return
         if act == "undo":
-            for key, (_o, _old, src) in list(self._pend.items()):       # dokończ zapis trwającej zmiany
-                GLib.source_remove(src)
-                self._pend.pop(key)
-                kind = key[0]
-                cur = {"volume": "volume_db", "fx": "fx", "offset": "offset_ms"}[kind]
-                if getattr(_o, cur) != _old:
-                    self._undo.append((kind, _o, _old))
+            self._flush_pending()
             while self._undo:
                 kind, obj, old = self._undo.pop()
                 if kind == "offsets":                                     # przesunięcie całej grupy
                     for o, prev in obj:
-                        if o is self.backing or o in self.tracks:
+                        if o is self.backing or o in self._all():
                             self._tl_offset(o, prev)
                     self.timeline.selection = None
                     self.win.toast(tr("tl_undone_offset"))
                     self.timeline.queue_draw()
                     return
                 if kind == "ops":
-                    tracks = [t for t in (obj if isinstance(obj, tuple) else (obj,)) if t in self.tracks and t.ops]
+                    tracks = [t for t in (obj if isinstance(obj, tuple) else (obj,)) if t in self._all() and t.ops]
                     if not tracks:
                         continue
                     for t in tracks:
@@ -449,7 +464,21 @@ class VocalPage(Gtk.Box):
                     self.win.toast(tr("tl_undone_ops"))
                     self.timeline.queue_draw()
                     return
-                if obj is not self.backing and obj not in self.tracks:
+                if kind == "clip_add":                                   # cofnij wklejenie klipów
+                    for c in obj:
+                        if c in c.parent.clips:
+                            c.parent.clips.remove(c)
+                    self._clips_changed()
+                    self.win.toast(tr("tl_undone_ops"))
+                    return
+                if kind == "clip_del":
+                    for c in obj:
+                        if c.parent in self.tracks and c not in c.parent.clips:
+                            c.parent.clips.append(c)
+                    self._clips_changed()
+                    self.win.toast(tr("tl_undone_ops"))
+                    return
+                if obj is not self.backing and obj not in self._all():
                     continue                                    # ścieżkę usunięto – pomiń
                 if kind == "offset":
                     self._tl_offset(obj, old)
@@ -468,6 +497,14 @@ class VocalPage(Gtk.Box):
                 self.timeline.queue_draw()
                 return
             self.win.toast(tr("tl_nothing_undo"))
+            return
+        if act == "silence" and not self.timeline.selection and isinstance(self.timeline.selected, Clip):
+            c = self.timeline.selected                                   # Delete na klipie = usuń klip
+            c.parent.clips.remove(c)
+            self._push_undo(("clip_del", (c,), None))
+            self.timeline.selected = c.parent
+            self._clips_changed()
+            self.win.toast(tr("tl_clip_deleted"))
             return
         if act in ("copy", "cut", "silence"):
             items, span = self._sel_tracks()
@@ -493,23 +530,28 @@ class VocalPage(Gtk.Box):
             at = span[0] if span else tl.position                  # początek wklejania na osi czasu
             by_path = {t.path: t for t in self.tracks}
             single = len(self.clipboard) == 1
-            edits = []
+            sel_row = tl.selected.parent if isinstance(tl.selected, Clip) else tl.selected
+            new = []
             for path, a, b, rel in self.clipboard:
                 src = by_path.get(path)
-                if src is None or src.raw is None:
+                if src is None:
                     continue
-                # jedna ścieżka: wklej na zaznaczoną ścieżkę; kilka: każda na swoją, w tym samym ułożeniu
-                target = tl.selected if single and tl.selected in self.tracks else src
-                dest = at + rel - target.offset_ms / 1000
-                if dest < 0:
-                    continue
-                edits.append((target, ["paste", path, a, b, dest]))
-            if not edits:
+                # jedna ścieżka: na tor zaznaczonej ścieżki; kilka: każda na swój tor, w tym samym ułożeniu.
+                # Wklejka to OSOBNY klip – przesuwa się niezależnie od reszty toru.
+                row = sel_row if single and sel_row in self.tracks else src
+                c = Clip(row, path, src.preset)
+                c.ops = [["trim", a, b]]
+                c.offset_ms = round((at + rel - a) * 1000)
+                row.clips.append(c)
+                new.append(c)
+            if not new:
                 self.win.toast(tr("tl_src_missing"))
                 return
-            self._edit_many(edits)
+            self._push_undo(("clip_add", tuple(new), None))
+            self._clips_changed(render=new)
+            tl.selected = new[0]
             d = max(b - a for _p, a, b, _r in self.clipboard)
-            self.win.toast(tr("tl_paste_done", d=d, at=C.fmt_dur(at)) + (f" · {len(edits)}×" if len(edits) > 1 else ""))
+            self.win.toast(tr("tl_paste_done", d=d, at=C.fmt_dur(at)) + (f" · {len(new)}×" if len(new) > 1 else ""))
 
     def to_start(self):
         """Powrót na początek ścieżki (przycisk ⏮ obok Play albo klawisz Home)."""
@@ -580,6 +622,12 @@ class VocalPage(Gtk.Box):
         d.connect("response", resp)
         d.present(self.win)
 
+    def _clips_changed(self, render=()):
+        for c in render:
+            self._render(c)
+        self._tl_refresh()
+        self._remix()
+
     def _edit(self, t, op):
         self._edit_many([(t, op)])
 
@@ -590,7 +638,7 @@ class VocalPage(Gtk.Box):
             t.ops.append(op)
             tracks.append(t)
             L.log(f"{os.path.basename(t.path)}: edycja {op[0]}", tag="edit")
-        self._undo.append(("ops", tuple(tracks), None))
+        self._push_undo(("ops", tuple(tracks), None))
         for t in dict.fromkeys(tracks):
             self._post(t)
 
@@ -599,9 +647,12 @@ class VocalPage(Gtk.Box):
         b = self.backing
         if b:
             lanes.append(Lane(b, tr("bk_short"), "backing"))
+        clips = []
         for n, t in enumerate(self.tracks):
-            lanes.append(Lane(t, f"{LETTERS[n]} · {os.path.splitext(os.path.basename(t.path))[0]}", "vocal"))
-        self.timeline.set_lanes(lanes)
+            row = Lane(t, f"{LETTERS[n]} · {os.path.splitext(os.path.basename(t.path))[0]}", "vocal")
+            lanes.append(row)
+            clips += [Lane(c, row.name, "vocal", parent=row) for c in t.clips]
+        self.timeline.set_lanes(lanes, clips)
         self.tl_group.set_visible(bool(lanes))
 
     def _tl_peaks(self, obj, path):
@@ -615,6 +666,19 @@ class VocalPage(Gtk.Box):
             self.timeline.set_peaks(obj, pk, dur)
             return False
         fut.add_done_callback(lambda f: GLib.idle_add(done, f))
+
+    def _flush_pending(self):
+        """Zmiany suwaków czekające 600 ms -> do historii teraz (zanim trafi tam coś nowszego)."""
+        for key, (o, old, src) in list(self._pend.items()):
+            GLib.source_remove(src)
+            self._pend.pop(key)
+            cur = {"volume": "volume_db", "fx": "fx", "offset": "offset_ms"}[key[0]]
+            if getattr(o, cur) != old:
+                self._undo.append((key[0], o, old))
+
+    def _push_undo(self, entry):
+        self._flush_pending()
+        self._undo.append(entry)
 
     def _note(self, kind, obj, old):
         """Zmiana suwakiem na karcie -> do cofania (Ctrl+Z). Przeciąganie suwaka to jedna zmiana:
@@ -668,6 +732,10 @@ class VocalPage(Gtk.Box):
                 self.bk_of_spin.set_value(ms)
             elif obj in self.tracks and obj.w:
                 obj.w["of_spin"].set_value(ms)
+            elif isinstance(obj, Clip):                           # klip: bez pola na karcie – od razu przelicz
+                obj.offset_ms = ms
+                self._post(obj)
+                self.timeline.queue_draw()
         finally:
             self._quiet -= 1
 
@@ -1082,7 +1150,7 @@ class VocalPage(Gtk.Box):
         self._update()
 
     def _rendered(self, t, tok, fut):
-        if tok != t.token or t not in self.tracks:
+        if tok != t.token or t not in self._all():
             return False
         try:
             dry, wet, t.duration = fut.result()
@@ -1110,7 +1178,7 @@ class VocalPage(Gtk.Box):
         fut.add_done_callback(lambda f: GLib.idle_add(self._posted, t, tok, f))
 
     def _posted(self, t, tok, fut):
-        if tok != t.shift_token or t not in self.tracks:
+        if tok != t.shift_token or t not in self._all():
             return False
         try:
             r = fut.result()
@@ -1150,7 +1218,7 @@ class VocalPage(Gtk.Box):
     def _remix_now(self):
         self._remix_src = 0
         extra = [self.backing] if self.backing and self.backing.dry else []
-        self.mixer.set_tracks(self.tracks + extra)
+        self.mixer.set_tracks(self._all() + extra)
         n = len([t for t in self.tracks if t.dry])
         if n:
             L.log(f"mikser GStreamer: {n} {plural(n, 'stem', 'pl')} × (sucha + efekt) -> audiomixer", tag="mixer")
@@ -1240,8 +1308,12 @@ class VocalPage(Gtk.Box):
         return True
 
     # ================================================================ scalanie
+    def _all(self):
+        """Ścieżki i ich klipy (do miksera, scalania, cofania)."""
+        return [x for t in self.tracks for x in [t] + t.clips]
+
     def _ready(self):
-        return [t for t in self.tracks if t.dry and not t.error]
+        return [t for t in self._all() if t.dry and not t.error]
 
     def _update(self):
         has_any = bool(self.tracks or self.backing)
@@ -1372,7 +1444,9 @@ class VocalPage(Gtk.Box):
         b = self.backing
         return dict(preset=self.album_preset, manual=dict(self.manual),
                     tracks=[dict(path=t.path, preset=t.preset, volume_db=t.volume_db, fx=t.fx, mute=t.mute,
-                                 offset_ms=t.offset_ms, ops=[list(op) for op in t.ops]) for t in self.tracks],
+                                 offset_ms=t.offset_ms, ops=[list(op) for op in t.ops],
+                                 clips=[dict(path=c.path, preset=c.preset, offset_ms=c.offset_ms,
+                                             ops=[list(op) for op in c.ops]) for c in t.clips]) for t in self.tracks],
                     backing=dict(path=b.path, volume_db=b.volume_db, mute=b.mute, in_mix=b.in_mix,
                                  offset_ms=b.offset_ms) if b else None)
 
@@ -1413,9 +1487,15 @@ class VocalPage(Gtk.Box):
             t.mute = bool(it.get("mute"))
             t.offset_ms = float(it.get("offset_ms", 0.0))
             t.ops = [list(op) for op in it.get("ops", []) if op and op[0] in ("silence", "paste", "scratch", "trim")]
+            for cd in it.get("clips", []):
+                if os.path.exists(cd.get("path", "")):
+                    c = Clip(t, cd["path"], cd.get("preset") if cd.get("preset") in V.PRESET_ORDER else t.preset)
+                    c.offset_ms = float(cd.get("offset_ms", 0.0))
+                    c.ops = [list(op) for op in cd.get("ops", [])]
+                    t.clips.append(c)
             new.append(t)
         self.tracks = sorted(new, key=lambda t: os.path.basename(t.path).lower())[:MAX_TRACKS]
         self._rebuild()
-        for t in self.tracks:
+        for t in self._all():
             self._render(t)
         self._update()

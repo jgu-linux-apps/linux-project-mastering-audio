@@ -812,6 +812,20 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'tl_clip_deleted': 'Usunięto klip (Ctrl+Z przywraca)',
+    'unsaved_title': 'Zapisać zmiany w projekcie?',
+    'unsaved_body': 'Projekt ma niezapisane zmiany. Jeśli nie zapiszesz, przepadną.',
+    'unsaved_discard': 'Nie zapisuj',
+})
+S["en"].update({
+    'tl_clip_deleted': 'Clip deleted (Ctrl+Z brings it back)',
+    'unsaved_title': 'Save changes to the project?',
+    'unsaved_body': "The project has unsaved changes. They will be lost if you don't save.",
+    'unsaved_discard': "Don't save",
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:

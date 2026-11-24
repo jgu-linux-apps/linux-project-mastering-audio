@@ -60,7 +60,8 @@ It is not another Audacity – just what you need. The interface is available in
    the same level (−20 LUFS = slider at 0 dB); **Level all** sets every volume slider back to 0 dB.
    **Editing on the timeline** – the toolbar has **Move** (hand) and **Select** tools (or drag with Shift):
    **Cut** (Ctrl+X – copies and leaves silence, so the vocal stays in time with the beat), **Copy** (Ctrl+C),
-   **Paste** (Ctrl+V – at the red cursor on the selected track, replacing what was there; e.g. duplicate a chorus),
+   **Paste** (Ctrl+V – a **separate clip** at the red cursor on the selected track's lane; it moves and trims on its own,
+   follows the lane's volume / reverb / M / S, Delete removes it; e.g. duplicate a chorus),
    **Silence** (Delete / M – complete silence on the selection) and **Undo** (Ctrl+Z – also undoes moving a clip, the
    volume knob and the M button); Space plays / pauses.
    **Scratch** (toolbar): DJ scratches made from the start of the selection (about one beat, e.g. the first syllable),
@@ -157,6 +158,8 @@ file writes. It is hidden at start-up and opens only when you click the icon.
 
 ## Projects
 
+Closing the app with unsaved changes asks whether to save them (Save / Don't save / Cancel).
+
 Buttons in the title bar (and menu ☰): **Save project** (Ctrl+S), **Open project…** (Ctrl+O) and **Clear project** (asks first, offers to save) – a `.pmaproj` file keeps both tabs: vocal tracks with
 their options, volumes, effects and offsets, the backing track, MANUAL sliders, album tracks, mastering, target, method,
 output settings, cover, reference and codec. Missing files are listed and skipped. A project can also be opened from
@@ -207,6 +210,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.12.0** – timeline: pasted parts are **separate clips** on the lane – they move, trim and delete on their own (undoable, saved in the project); the app asks to save unsaved changes before closing.
 - **0.11.1** – timeline: trim a clip by dragging its left / right edge (undoable, saved in the project), so you can paste right next to it.
 - **0.11.0** – **Sample** track option (no processing – e.g. a piece of another song to scratch); scratches stay inside the selection and blend smoothly into the rest of the vocal; scratch sample can be the start or the whole selection.
 - **0.10.1** – ⏮ Back to start button next to Play (toolbar and player bar) and the Home key.

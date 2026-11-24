@@ -176,6 +176,10 @@ class MainWindow(Adw.ApplicationWindow):
         self.set_title(f"{os.path.basename(path)} – {APP_NAME}")
         L.log(f"projekt zapisany: {path}", "ok", tag="project")
         self.toast(tr("project_saved", name=os.path.basename(path)))
+        self.mark_saved()
+        then, self._after_save = getattr(self, "_after_save", None), None
+        if then:
+            then()
 
     def open_project(self, path=None):
         if path is None:
@@ -208,6 +212,7 @@ class MainWindow(Adw.ApplicationWindow):
         self.project_path = path
         self.set_title(f"{os.path.basename(path)} – {APP_NAME}")
         L.log(f"projekt otwarty: {path}", "ok", tag="project")
+        self.mark_saved()
         if missing:
             d = Adw.AlertDialog(heading=tr("project_missing_title"),
                                 body=tr("project_missing_body") + "\n\n" + "\n".join(missing[:12]))
@@ -215,6 +220,40 @@ class MainWindow(Adw.ApplicationWindow):
             d.present(self)
         else:
             self.toast(tr("project_opened", name=os.path.basename(path)))
+
+    # ------------------------------------------------------------------ niezapisane zmiany
+    def _state_json(self):
+        return json.dumps(dict(vocal=self.vocal.get_state(), album=self.album.get_state()), sort_keys=True,
+                          default=str)
+
+    def mark_saved(self):
+        self._saved_state = self._state_json()
+
+    def has_unsaved(self):
+        empty = not (self.vocal.tracks or self.vocal.backing or self.album.tracks)
+        if empty and not self.project_path:
+            return False
+        return self._state_json() != getattr(self, "_saved_state", None)
+
+    def ask_save_then(self, then):
+        """Niezapisane zmiany -> Zapisz / Nie zapisuj / Anuluj; potem `then()` (np. zamknięcie)."""
+        d = Adw.AlertDialog(heading=tr("unsaved_title"), body=tr("unsaved_body"))
+        d.add_response("cancel", tr("cancel"))
+        d.add_response("discard", tr("unsaved_discard"))
+        d.add_response("save", tr("project_save"))
+        d.set_response_appearance("discard", Adw.ResponseAppearance.DESTRUCTIVE)
+        d.set_response_appearance("save", Adw.ResponseAppearance.SUGGESTED)
+        d.set_default_response("save")
+        d.set_close_response("cancel")
+
+        def resp(_d, r):
+            if r == "discard":
+                then()
+            elif r == "save":
+                self._after_save = then
+                self.save_project(self.project_path)
+        d.connect("response", resp)
+        d.present(self)
 
     def clear_project(self):
         """Nowy, pusty projekt: czyści obie zakładki (z pytaniem, bo zmiany nie są zapisywane same)."""
@@ -239,6 +278,7 @@ class MainWindow(Adw.ApplicationWindow):
                 self.album.set_reference(None)
                 self.project_path = None
                 self.set_title(APP_NAME)
+                self.mark_saved()
                 L.log("nowy pusty projekt", tag="project")
         d.connect("response", resp)
         d.present(self)
