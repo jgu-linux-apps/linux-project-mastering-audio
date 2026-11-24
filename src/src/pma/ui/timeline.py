@@ -17,7 +17,7 @@ from ..engine.vocal import PEAK_HOP_S  # noqa: E402
 LABEL_W, OFF_W, RULER_H, LANE_H, GAP = 168, 78, 22, 40, 4
 KNOB_R = 10
 VOL_RANGE = (-24.0, 12.0)
-OFFSET_RANGE = (-2000.0, 2000.0)
+OFFSET_RANGE = (-600000.0, 600000.0)   # ±10 min – klip w dowolne miejsce toru
 DISPLAY_GAIN = 1.6     # fala w prawdziwej skali: ścieżki na wspólnym poziomie (−20 LUFS) mają szczyty ok. −4 dBFS
 
 

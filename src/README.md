@@ -42,8 +42,8 @@ It is not another Audacity – just what you need. The interface is available in
    **Tone (EQ)** – low cut, body 200 Hz, mud 350 Hz, presence 3.5 kHz, air 12 kHz; **Compression** – threshold, ratio,
    attack, release; **De-esser & saturation**; **Space** – reverb, pre-delay, echo and echo repeats. Changes are heard
    about a second after you release a slider, and the settings are remembered.
-3. For every track: **Volume** (−24…+12 dB), **Reverb / echo** (0–100%; 0 = off), **Offset** (−2000…+2000 ms – shift a
-   stem that does not start exactly with the others; + later, − earlier), **Mute** (muted tracks are left out).
+3. For every track: **Volume** (−24…+12 dB), **Reverb / echo** (0–100%; 0 = off), **Offset** (up to ±10 min – drag the clip anywhere
+   on the timeline; + later, − earlier; the slider covers ±30 s for fine moves), **Mute** (muted tracks are left out).
    **Backing track (instrumental)** – a card above the vocal tracks: load the music and hear the vocals against it.
    It plays unprocessed, levelled to about 2 dB above the vocals, with its own **volume**, **offset** and **mute**; it is
    for listening only unless you switch on **Include the backing track in the merged file**.
@@ -196,6 +196,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.8.13** – timeline: clips can be dragged anywhere on the lane (offset up to ±10 minutes instead of ±2 s).
 - **0.8.12** – desktop entry without `TryExec`, so the Ubuntu dock (a snap that cannot see /usr/bin) lists the app again.
 - **0.8.11** – the Open project button in the title bar uses an open-folder icon (it looked like Copy).
 - **0.8.10** – the app icon is shown in the Ubuntu dock again (the light / dark icon switch now uses the icon name instead of a file path).
