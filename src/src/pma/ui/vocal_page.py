@@ -382,13 +382,18 @@ class VocalPage(Gtk.Box):
         tl.queue_draw()
 
     # ---------------------------------------------------------------- edycja: wytnij / kopiuj / wklej / wycisz
-    def _sel_track(self):
+    def _sel_tracks(self):
+        """Zaznaczone ścieżki: [(ścieżka, od, do)] w czasie ścieżki (bez offsetu) + (od, do) na osi czasu."""
         sel = self.timeline.selection
-        if sel and sel[0] in self.tracks:
-            t, a, b = sel
-            off = t.offset_ms / 1000
-            return t, max(0.0, a - off), max(0.0, b - off)
-        return None
+        if not sel:
+            return [], None
+        objs, a, b = sel
+        out = []
+        for t in self.tracks:
+            if t in objs:
+                off = t.offset_ms / 1000
+                out.append((t, max(0.0, a - off), max(0.0, b - off)))
+        return out, (a, b)
 
     def tl_action(self, act):
         if act == "play":
@@ -406,14 +411,21 @@ class VocalPage(Gtk.Box):
                     self._undo.append((kind, _o, _old))
             while self._undo:
                 kind, obj, old = self._undo.pop()
+                if kind == "ops":
+                    tracks = [t for t in (obj if isinstance(obj, tuple) else (obj,)) if t in self.tracks and t.ops]
+                    if not tracks:
+                        continue
+                    for t in tracks:
+                        t.ops.pop()
+                    for t in dict.fromkeys(tracks):
+                        self._post(t)
+                    L.log(f"cofnięto edycję ({len(tracks)} {plural(len(tracks), 'stem', 'pl')})", tag="edit")
+                    self.win.toast(tr("tl_undone_ops"))
+                    self.timeline.queue_draw()
+                    return
                 if obj is not self.backing and obj not in self.tracks:
                     continue                                    # ścieżkę usunięto – pomiń
-                if kind == "ops":
-                    if not obj.ops:
-                        continue
-                    obj.ops.pop()
-                    self._post(obj)
-                elif kind == "offset":
+                if kind == "offset":
                     self._tl_offset(obj, old)
                 elif kind == "volume":
                     self._tl_volume(obj, old)
@@ -432,42 +444,60 @@ class VocalPage(Gtk.Box):
             self.win.toast(tr("tl_nothing_undo"))
             return
         if act in ("copy", "cut", "silence"):
-            st = self._sel_track()
-            if not st:
+            items, span = self._sel_tracks()
+            if not items:
                 self.win.toast(tr("tl_need_sel"))
                 return
-            t, a, b = st
             if act in ("copy", "cut"):
-                self.clipboard = (t.path, a, b)
-                L.log(f"{os.path.basename(t.path)}: skopiowano {a:.2f}–{b:.2f} s", tag="edit")
+                # schowek: fragment każdej ścieżki + jej przesunięcie względem początku zaznaczenia na osi czasu
+                self.clipboard = [(t.path, a, b, (t.offset_ms / 1000 + a) - span[0]) for t, a, b in items]
+                L.log(f"skopiowano {span[1] - span[0]:.2f} s z {len(items)} {plural(len(items), 'stem', 'pl')}",
+                      tag="edit")
             if act in ("cut", "silence"):
-                self._edit(t, ["silence", a, b])
-            self.win.toast(tr("tl_" + act + "_done", d=b - a))
+                self._edit_many([(t, ["silence", a, b]) for t, a, b in items])
+            d = span[1] - span[0]
+            self.win.toast(tr("tl_" + act + "_done", d=d) + (f" · {len(items)}×" if len(items) > 1 else ""))
             return
         if act == "paste":
             if not self.clipboard:
                 self.win.toast(tr("tl_empty_clip"))
                 return
             tl = self.timeline
-            target = tl.selected if tl.selected in self.tracks else next(
-                (t for t in self.tracks if t.path == self.clipboard[0]), None)
-            if target is None:
-                return
-            src = next((t for t in self.tracks if t.path == self.clipboard[0]), None)
-            if src is None or src.raw is None:
+            items, span = self._sel_tracks()
+            at = span[0] if span else tl.position                  # początek wklejania na osi czasu
+            by_path = {t.path: t for t in self.tracks}
+            single = len(self.clipboard) == 1
+            edits = []
+            for path, a, b, rel in self.clipboard:
+                src = by_path.get(path)
+                if src is None or src.raw is None:
+                    continue
+                # jedna ścieżka: wklej na zaznaczoną ścieżkę; kilka: każda na swoją, w tym samym ułożeniu
+                target = tl.selected if single and tl.selected in self.tracks else src
+                dest = at + rel - target.offset_ms / 1000
+                if dest < 0:
+                    continue
+                edits.append((target, ["paste", path, a, b, dest]))
+            if not edits:
                 self.win.toast(tr("tl_src_missing"))
                 return
-            sel = self._sel_track()
-            dest = sel[1] if sel and sel[0] is target else max(0.0, tl.position - target.offset_ms / 1000)
-            _p, a, b = self.clipboard
-            self._edit(target, ["paste", src.path, a, b, dest])
-            self.win.toast(tr("tl_paste_done", d=b - a, at=C.fmt_dur(dest + target.offset_ms / 1000)))
+            self._edit_many(edits)
+            d = max(b - a for _p, a, b, _r in self.clipboard)
+            self.win.toast(tr("tl_paste_done", d=d, at=C.fmt_dur(at)) + (f" · {len(edits)}×" if len(edits) > 1 else ""))
 
     def _edit(self, t, op):
-        t.ops.append(op)
-        self._undo.append(("ops", t, None))
-        L.log(f"{os.path.basename(t.path)}: edycja {op[0]}", tag="edit")
-        self._post(t)
+        self._edit_many([(t, op)])
+
+    def _edit_many(self, edits):
+        """Edycje kilku ścieżek naraz – jeden wpis do cofania (Ctrl+Z cofa cały blok)."""
+        tracks = []
+        for t, op in edits:
+            t.ops.append(op)
+            tracks.append(t)
+            L.log(f"{os.path.basename(t.path)}: edycja {op[0]}", tag="edit")
+        self._undo.append(("ops", tuple(tracks), None))
+        for t in dict.fromkeys(tracks):
+            self._post(t)
 
     def _tl_refresh(self):
         lanes = []

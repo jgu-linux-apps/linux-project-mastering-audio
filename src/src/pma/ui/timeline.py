@@ -39,7 +39,7 @@ class Timeline(AlbumChart):
         self.on_offset, self.on_seek, self.on_action, self.on_volume = on_offset, on_seek, on_action, on_volume
         self._knob = None                # (lane, głośność na starcie) – przeciąganie pokrętła
         self.tool = "move"               # move: łapka przesuwa klipy · select: zaznaczanie fragmentu
-        self.selection = None            # (obj, początek, koniec) w sekundach osi czasu
+        self.selection = None            # (krotka ścieżek, początek, koniec) w sekundach osi czasu
         self._sel_drag = None
         self.lanes = []
         self.items = [1]
@@ -249,7 +249,7 @@ class Timeline(AlbumChart):
             return
         if self._selecting(g):
             lane = self._lane_at(y)
-            self._sel_drag = (lane, self._t(x)) if lane and lane.kind == "vocal" and x >= LABEL_W else None
+            self._sel_drag = (self.lanes.index(lane), self._t(x)) if lane and lane.kind == "vocal" and x >= LABEL_W else None
             self._drag = None
             return
         lane = self._clip_hit(x, y)
@@ -268,11 +268,17 @@ class Timeline(AlbumChart):
             self.on_seek(max(0.0, self._t(sx + dx)))
             return
         if self._sel_drag:
-            lane, t0 = self._sel_drag
+            i0, t0 = self._sel_drag                              # przeciąganie w poprzek torów = kilka ścieżek
+            _ok, _sx, sy = g.get_start_point()
+            _ok, _dx, dy = g.get_offset()
+            i1 = int((sy + dy - RULER_H) // (LANE_H + GAP))
+            i1 = max(0, min(len(self.lanes) - 1, i1))
+            lo, hi = sorted((i0, i1))
+            objs = tuple(ln.obj for ln in self.lanes[lo:hi + 1] if ln.kind == "vocal")
             t1 = self._t(sx + dx)
             a, b = sorted((max(0.0, t0), max(0.0, t1)))
-            self.selection = (lane.obj, a, b) if b - a > 0.01 else None
-            self.selected = lane.obj
+            self.selection = (objs, a, b) if b - a > 0.01 and objs else None
+            self.selected = self.lanes[i0].obj
             self.queue_draw()
             return
         if not self._drag:
@@ -376,13 +382,13 @@ class Timeline(AlbumChart):
             return True
         shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
         if self.selection and shift and keyval in (Gdk.KEY_Left, Gdk.KEY_Right):
-            obj, a0, b0 = self.selection                         # precyzyjne zaznaczanie klawiaturą
+            objs, a0, b0 = self.selection                        # precyzyjne zaznaczanie klawiaturą
             step = (0.001 if state & Gdk.ModifierType.ALT_MASK else 0.01) * (1 if keyval == Gdk.KEY_Right else -1)
             if ctrl:
                 a0 = max(0.0, min(b0 - 0.01, a0 + step))         # Ctrl+Shift: początek
             else:
                 b0 = max(a0 + 0.01, b0 + step)                   # Shift: koniec
-            self.selection = (obj, round(a0, 3), round(b0, 3))
+            self.selection = (objs, round(a0, 3), round(b0, 3))
             self.queue_draw()
             return True
         lane = next((lane for lane in self.lanes if lane.obj is self.selected), None)
@@ -553,9 +559,10 @@ class Timeline(AlbumChart):
         x0, aw = self._area()
         # zaznaczenie
         if self.selection:
-            obj, a, b = self.selection
+            objs, a, b = self.selection
+            first = True
             for i, lane in enumerate(self.lanes):
-                if lane.obj is obj:
+                if lane.obj in objs:
                     y = RULER_H + i * (LANE_H + GAP)
                     xa, xb = max(x0, self._x(a)), min(x0 + aw, self._x(b))
                     if xb > xa:
@@ -567,8 +574,12 @@ class Timeline(AlbumChart):
                         cr.set_line_width(1)
                         cr.rectangle(xa + 0.5, y + 0.5, xb - xa - 1, LANE_H - 1)
                         cr.stroke()
-                        lab = f"{int(a // 60)}:{a % 60:06.3f} – {int(b // 60)}:{b % 60:06.3f} · {b - a:.3f} s"
-                        self._text(cr, xa + 4, y + 12, lab.replace(".", ","), 9, "left", 0.9)
+                        if first:
+                            lab = f"{int(a // 60)}:{a % 60:06.3f} – {int(b // 60)}:{b % 60:06.3f} · {b - a:.3f} s"
+                            if len(objs) > 1:
+                                lab += f" · {len(objs)}×"
+                            self._text(cr, xa + 4, y + 12, lab.replace(".", ","), 9, "left", 0.9)
+                            first = False
         # pozycja odtwarzania
         px = self._x(self.position)
         if x0 <= px <= x0 + aw:
