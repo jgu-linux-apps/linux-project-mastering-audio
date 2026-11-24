@@ -31,8 +31,9 @@ class Lane:
 
 
 class Timeline(AlbumChart):
-    def __init__(self, on_offset, on_seek, on_action=None, on_volume=None):
+    def __init__(self, on_offset, on_seek, on_action=None, on_volume=None, on_mute=None):
         super().__init__()
+        self.on_mute = on_mute
         self.on_offset, self.on_seek, self.on_action, self.on_volume = on_offset, on_seek, on_action, on_volume
         self._knob = None                # (lane, głośność na starcie) – przeciąganie pokrętła
         self.tool = "move"               # move: łapka przesuwa klipy · select: zaznaczanie fragmentu
@@ -129,6 +130,17 @@ class Timeline(AlbumChart):
     def _knob_xy(self, i):
         return LABEL_W - KNOB_R - 8, RULER_H + i * (LANE_H + GAP) + LANE_H / 2
 
+    def _mute_rect(self, i):
+        kx, ky = self._knob_xy(i)
+        return kx - KNOB_R - 30, ky - 1, 20, 17          # pod wartością dB, obok pokrętła
+
+    def _mute_hit(self, x, y):
+        lane = self._lane_at(y)
+        if not lane or not hasattr(lane.obj, "mute"):
+            return None
+        rx, ry, rw, rh = self._mute_rect(self.lanes.index(lane))
+        return lane if rx - 2 <= x <= rx + rw + 2 and ry - 2 <= y <= ry + rh + 2 else None
+
     def _knob_hit(self, x, y):
         lane = self._lane_at(y)
         if not lane or not hasattr(lane.obj, "volume_db"):
@@ -161,6 +173,12 @@ class Timeline(AlbumChart):
 
     def _pressed(self, gesture, n, x, y):
         self.grab_focus()
+        mute = self._mute_hit(x, y)
+        if mute:
+            if self.on_mute:
+                self.on_mute(mute.obj, not mute.obj.mute)
+            self.queue_draw()
+            return
         knob = self._knob_hit(x, y)
         if knob and n == 2:
             self._set_volume(knob, 0.0)
@@ -191,6 +209,8 @@ class Timeline(AlbumChart):
         if y < RULER_H:
             return
         btn = g.get_current_button()
+        if self._mute_hit(x, y):
+            return
         lane = self._knob_hit(x, y) if btn == 1 else self._lane_at(y) if btn == 2 else None
         if btn != 1:
             if lane and hasattr(lane.obj, "volume_db"):
@@ -262,6 +282,8 @@ class Timeline(AlbumChart):
         name = "grab" if self._clip_hit(x, y) else "pointer" if (y < RULER_H and x >= LABEL_W) else "default"
         if self._knob_hit(x, y) or self._knob:
             name = "ns-resize"
+        if self._mute_hit(x, y):
+            name = "pointer"
         if self.tool == "select" and y >= RULER_H and x >= LABEL_W:
             name = "text"
         if self._drag:
@@ -339,8 +361,19 @@ class Timeline(AlbumChart):
         mute = getattr(lane.obj, "mute", False)
         kx, ky = self._knob_xy(i)
         y = RULER_H + i * (LANE_H + GAP)
-        self._text(cr, 6, y + LANE_H / 2 + 12, "M" if mute else _minus(f"{db:+.1f} dB").replace(".", ","), 9, "left",
-                   0.85 if abs(db) >= 0.25 or mute else 0.5)
+        self._text(cr, 6, y + LANE_H / 2 + 12, _minus(f"{db:+.1f} dB").replace(".", ","), 9, "left",
+                   0.35 if mute else 0.85 if abs(db) >= 0.25 else 0.5)
+        rx, ry, rw, rh = self._mute_rect(i)                     # przycisk M (wycisz)
+        if mute:
+            cr.set_source_rgba(0.89, 0.29, 0.29, 0.95)
+            self._bar(cr, rx, ry + rh, ry, rw, 4)
+            self._text(cr, rx + rw / 2, ry + rh - 4, "M", 10, "center", 1.0, bold=True, rgb=(1, 1, 1))
+        else:
+            self._fg(cr, 0.35)
+            cr.set_line_width(1)
+            self._bar(cr, rx + 0.5, ry + rh - 0.5, ry + 0.5, rw - 1, 4, fill=False)
+            cr.stroke()
+            self._text(cr, rx + rw / 2, ry + rh - 4, "M", 10, "center", 0.6, bold=True)
         a0, a1 = math.radians(135), math.radians(405)
         frac = (db - VOL_RANGE[0]) / (VOL_RANGE[1] - VOL_RANGE[0])
         zero = (0 - VOL_RANGE[0]) / (VOL_RANGE[1] - VOL_RANGE[0])
@@ -388,7 +421,7 @@ class Timeline(AlbumChart):
             self._fg(cr, 0.05)
             self._bar(cr, x0, y + LANE_H, y, aw, 4)
             sel = lane.obj is self.selected
-            self._text(cr, 6, y + LANE_H / 2 - 2, lane.name[:20], 10, "left", 0.9 if sel else 0.75, bold=sel)
+            self._text(cr, 6, y + LANE_H / 2 - 2, lane.name[:22], 10, "left", 0.9 if sel else 0.75, bold=sel)
             self._knob_draw(cr, i, lane)
             off = lane.obj.offset_ms
             self._text(cr, w - 6, y + LANE_H / 2 + 4, _minus(f"{off:+.0f} ms") if abs(off) >= 0.5 else "0 ms", 10,

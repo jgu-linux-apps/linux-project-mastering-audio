@@ -51,7 +51,8 @@ It is not another Audacity – just what you need. The interface is available in
    Grab a clip and drag it left / right to set its offset (snaps to 10 ms, can be switched off); click the ruler to seek,
    Ctrl + wheel zooms, Shift + wheel pans, ← → move the selected clip by 1 ms (Shift: 10 ms), double-click resets it.
    Each lane has a **volume knob** next to its name: drag it up / down, drag with the **middle mouse button** anywhere on
-   the lane, or scroll over the name (±0.5 dB); double-click the knob for 0 dB. It is the same value as the Volume slider.
+   the lane, or scroll over the name (±0.5 dB); double-click the knob for 0 dB. It is the same value as the Volume slider. The **M** button next to it mutes the lane
+   (red = muted), the same as the mute button on the track card.
    Waveforms are drawn at their real level, including the volume slider and mute. Every vocal comes out of mastering at
    the same level (−20 LUFS = slider at 0 dB); **Level all** sets every volume slider back to 0 dB.
    **Editing on the timeline** – the toolbar has **Move** (hand) and **Select** tools (or drag with Shift):
@@ -190,6 +191,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.8.5** – timeline: **M** (mute) button for every lane next to the volume knob.
 - **0.8.4** – timeline: volume knob for every lane (drag, middle-button drag up / down, wheel over the name, double-click = 0 dB), dB value under the name.
 - **0.8.3** – timeline readable in light mode: darker waveforms and outlines, softer clip fill and selection.
 - **0.8.2** – both tabs use the full window width (no more empty side margins); option tiles in one row and vocal tracks in up to three columns on wide screens.
