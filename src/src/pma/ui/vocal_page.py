@@ -263,7 +263,7 @@ class VocalPage(Gtk.Box):
         snap.connect("toggled", lambda b: setattr(self.timeline, "snap", b.get_active()))
         g.set_header_suffix(snap)
         self.timeline = Timeline(on_offset=self._tl_offset, on_seek=lambda t: self.mixer.seek(t),
-                                 on_action=self.tl_action)
+                                 on_action=self.tl_action, on_volume=self._tl_volume)
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         card.add_css_class("card")
         card.append(self._tl_toolbar())
@@ -423,6 +423,13 @@ class VocalPage(Gtk.Box):
             self.timeline.set_peaks(obj, pk, dur)
             return False
         fut.add_done_callback(lambda f: GLib.idle_add(done, f))
+
+    def _tl_volume(self, obj, db):
+        """Pokrętło na osi czasu -> ten sam suwak „Głośność” (on zmienia mikser na żywo)."""
+        if obj is self.backing:
+            self.bk_vol.set_value(db)
+        elif obj in self.tracks and obj.w:
+            obj.w["vol"].set_value(db)
 
     def _tl_offset(self, obj, ms):
         """Klip przeciągnięty na osi czasu -> to samo pole co suwak „Przesunięcie” (ono przelicza dźwięk)."""

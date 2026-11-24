@@ -590,13 +590,13 @@ S["en"].update({
 
 S["pl"].update({
     'tl_title': 'Oś czasu',
-    'tl_sub': 'Złap klip łapką i przesuń w lewo / prawo · kliknięcie w linijkę przewija · Ctrl + kółko: zoom · Shift + kółko: przesuwanie widoku · ← →: ±1 ms (Shift ±10 ms) · podwójne kliknięcie: zero',
+    'tl_sub': 'Złap klip łapką i przesuń w lewo / prawo · kliknięcie w linijkę przewija · Ctrl + kółko: zoom · Shift + kółko: przesuwanie widoku · ← →: ±1 ms (Shift ±10 ms) · podwójne kliknięcie: zero · głośność: pokrętło przy nazwie, środkowy przycisk w górę / w dół albo kółko nad nazwą',
     'tl_snap': 'Przyciągaj do 10 ms',
     'bk_short': 'Podkład',
 })
 S["en"].update({
     'tl_title': 'Timeline',
-    'tl_sub': 'Grab a clip and drag it left / right · click the ruler to seek · Ctrl + wheel: zoom · Shift + wheel: pan · ← →: ±1 ms (Shift ±10 ms) · double-click: zero',
+    'tl_sub': 'Grab a clip and drag it left / right · click the ruler to seek · Ctrl + wheel: zoom · Shift + wheel: pan · ← →: ±1 ms (Shift ±10 ms) · double-click: zero · volume: the knob next to the name, middle button up / down or the wheel over the name',
     'tl_snap': 'Snap to 10 ms',
     'bk_short': 'Backing track',
 })

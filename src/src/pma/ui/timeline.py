@@ -14,7 +14,9 @@ from . import themes  # noqa: E402
 from .album_chart import AlbumChart, _minus  # noqa: E402
 from ..engine.vocal import PEAK_HOP_S  # noqa: E402
 
-LABEL_W, OFF_W, RULER_H, LANE_H, GAP = 118, 78, 22, 40, 4
+LABEL_W, OFF_W, RULER_H, LANE_H, GAP = 168, 78, 22, 40, 4
+KNOB_R = 10
+VOL_RANGE = (-24.0, 12.0)
 OFFSET_RANGE = (-2000.0, 2000.0)
 DISPLAY_GAIN = 1.6     # fala w prawdziwej skali: ścieżki na wspólnym poziomie (−20 LUFS) mają szczyty ok. −4 dBFS
 
@@ -29,9 +31,10 @@ class Lane:
 
 
 class Timeline(AlbumChart):
-    def __init__(self, on_offset, on_seek, on_action=None):
+    def __init__(self, on_offset, on_seek, on_action=None, on_volume=None):
         super().__init__()
-        self.on_offset, self.on_seek, self.on_action = on_offset, on_seek, on_action
+        self.on_offset, self.on_seek, self.on_action, self.on_volume = on_offset, on_seek, on_action, on_volume
+        self._knob = None                # (lane, głośność na starcie) – przeciąganie pokrętła
         self.tool = "move"               # move: łapka przesuwa klipy · select: zaznaczanie fragmentu
         self.selection = None            # (obj, początek, koniec) w sekundach osi czasu
         self._sel_drag = None
@@ -47,7 +50,7 @@ class Timeline(AlbumChart):
         self.set_can_focus(True)
         self.set_cursor(Gdk.Cursor.new_from_name("default"))
 
-        drag = Gtk.GestureDrag()
+        drag = Gtk.GestureDrag(button=0)           # lewy: klipy / zaznaczanie / pokrętło · środkowy: głośność
         drag.connect("drag-begin", self._begin)
         drag.connect("drag-update", self._update)
         drag.connect("drag-end", self._end)
@@ -123,6 +126,22 @@ class Timeline(AlbumChart):
         i = int((y - RULER_H) // (LANE_H + GAP))
         return self.lanes[i] if y >= RULER_H and 0 <= i < len(self.lanes) else None
 
+    def _knob_xy(self, i):
+        return LABEL_W - KNOB_R - 8, RULER_H + i * (LANE_H + GAP) + LANE_H / 2
+
+    def _knob_hit(self, x, y):
+        lane = self._lane_at(y)
+        if not lane or not hasattr(lane.obj, "volume_db"):
+            return None
+        kx, ky = self._knob_xy(self.lanes.index(lane))
+        return lane if (x - kx) ** 2 + (y - ky) ** 2 <= (KNOB_R + 4) ** 2 else None
+
+    def _set_volume(self, lane, db):
+        db = round(max(VOL_RANGE[0], min(VOL_RANGE[1], db)) * 2) / 2
+        if db != lane.obj.volume_db and self.on_volume:
+            self.on_volume(lane.obj, db)
+        self.queue_draw()
+
     def _clip_hit(self, x, y):
         lane = self._lane_at(y)
         if not lane or not lane.duration:
@@ -142,6 +161,12 @@ class Timeline(AlbumChart):
 
     def _pressed(self, gesture, n, x, y):
         self.grab_focus()
+        knob = self._knob_hit(x, y)
+        if knob and n == 2:
+            self._set_volume(knob, 0.0)
+            return
+        if knob:
+            return
         if y < RULER_H and x >= LABEL_W:
             self._ruler_drag = True
             self.on_seek(max(0.0, self._t(x)))
@@ -162,7 +187,19 @@ class Timeline(AlbumChart):
         self.queue_draw()
 
     def _begin(self, g, x, y):
+        self._knob = None
         if y < RULER_H:
+            return
+        btn = g.get_current_button()
+        lane = self._knob_hit(x, y) if btn == 1 else self._lane_at(y) if btn == 2 else None
+        if btn != 1:
+            if lane and hasattr(lane.obj, "volume_db"):
+                self._knob = (lane, lane.obj.volume_db)
+                self.set_cursor(Gdk.Cursor.new_from_name("ns-resize"))
+            return
+        if lane:
+            self._knob = (lane, lane.obj.volume_db)
+            self.set_cursor(Gdk.Cursor.new_from_name("ns-resize"))
             return
         if self._selecting(g):
             lane = self._lane_at(y)
@@ -176,6 +213,11 @@ class Timeline(AlbumChart):
 
     def _update(self, g, dx, _dy):
         ok, sx, _sy = g.get_start_point()
+        if self._knob:
+            lane, start = self._knob
+            _ok, _x, dy = g.get_offset()
+            self._set_volume(lane, start - dy * 0.15)          # w górę = głośniej, ok. 7 px na 1 dB
+            return
         if self._ruler_drag:
             self.on_seek(max(0.0, self._t(sx + dx)))
             return
@@ -195,6 +237,9 @@ class Timeline(AlbumChart):
         self._set(lane, ms, final=False)
 
     def _end(self, _g, _dx, _dy):
+        if self._knob:
+            self._knob = None
+            self.set_cursor(Gdk.Cursor.new_from_name("default"))
         self._ruler_drag = False
         self._sel_drag = None
         if self._drag:
@@ -215,6 +260,8 @@ class Timeline(AlbumChart):
 
     def _hover(self, _c, x, y):
         name = "grab" if self._clip_hit(x, y) else "pointer" if (y < RULER_H and x >= LABEL_W) else "default"
+        if self._knob_hit(x, y) or self._knob:
+            name = "ns-resize"
         if self.tool == "select" and y >= RULER_H and x >= LABEL_W:
             name = "text"
         if self._drag:
@@ -223,6 +270,13 @@ class Timeline(AlbumChart):
 
     def _scroll(self, ctl, dx, dy):
         state = ctl.get_current_event_state()
+        ev = ctl.get_current_event()
+        ok, px, py = ev.get_position() if ev else (False, 0, 0)
+        if ok and px < LABEL_W and not state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK):
+            lane = self._lane_at(py)                             # kółko nad nazwą ścieżki = głośność ±0,5 dB
+            if lane and hasattr(lane.obj, "volume_db") and dy:
+                self._set_volume(lane, lane.obj.volume_db - 0.5 * (1 if dy > 0 else -1))
+                return True
         start, length = self._win()
         total = self._total()
         if state & Gdk.ModifierType.CONTROL_MASK:              # zoom wokół pozycji odtwarzania
@@ -277,6 +331,39 @@ class Timeline(AlbumChart):
             return pal["target"]
         return pal["after"][0]
 
+    def _knob_draw(self, cr, i, lane):
+        """Pokrętło głośności: łuk 270° od −24 do +12 dB, znacznik 0 dB, wartość pod nazwą."""
+        if not hasattr(lane.obj, "volume_db"):
+            return
+        db = lane.obj.volume_db
+        mute = getattr(lane.obj, "mute", False)
+        kx, ky = self._knob_xy(i)
+        y = RULER_H + i * (LANE_H + GAP)
+        self._text(cr, 6, y + LANE_H / 2 + 12, "M" if mute else _minus(f"{db:+.1f} dB").replace(".", ","), 9, "left",
+                   0.85 if abs(db) >= 0.25 or mute else 0.5)
+        a0, a1 = math.radians(135), math.radians(405)
+        frac = (db - VOL_RANGE[0]) / (VOL_RANGE[1] - VOL_RANGE[0])
+        zero = (0 - VOL_RANGE[0]) / (VOL_RANGE[1] - VOL_RANGE[0])
+        cr.set_line_width(3)
+        cr.new_path()
+        self._fg(cr, 0.15)
+        cr.arc(kx, ky, KNOB_R, a0, a1)
+        cr.stroke()
+        rgb = self._colors(lane.kind)
+        light = not Adw.StyleManager.get_default().get_dark()
+        ink = tuple(c * 0.55 for c in rgb) if light else rgb
+        cr.set_source_rgba(*ink, 0.35 if mute else 0.95)
+        lo, hi = sorted((a0 + (a1 - a0) * zero, a0 + (a1 - a0) * frac))
+        cr.new_path()
+        cr.arc(kx, ky, KNOB_R, lo, max(hi, lo + 0.02))
+        cr.stroke()
+        ang = a0 + (a1 - a0) * frac                              # wskazówka
+        self._fg(cr, 0.8)
+        cr.set_line_width(2)
+        cr.move_to(kx + math.cos(ang) * 3, ky + math.sin(ang) * 3)
+        cr.line_to(kx + math.cos(ang) * (KNOB_R - 3), ky + math.sin(ang) * (KNOB_R - 3))
+        cr.stroke()
+
     def _draw(self, _area, cr, w, h):
         x0, aw = self._area()
         start, length = self._win()
@@ -301,7 +388,8 @@ class Timeline(AlbumChart):
             self._fg(cr, 0.05)
             self._bar(cr, x0, y + LANE_H, y, aw, 4)
             sel = lane.obj is self.selected
-            self._text(cr, 6, y + LANE_H / 2 + 4, lane.name[:16], 10, "left", 0.9 if sel else 0.7, bold=sel)
+            self._text(cr, 6, y + LANE_H / 2 - 2, lane.name[:20], 10, "left", 0.9 if sel else 0.75, bold=sel)
+            self._knob_draw(cr, i, lane)
             off = lane.obj.offset_ms
             self._text(cr, w - 6, y + LANE_H / 2 + 4, _minus(f"{off:+.0f} ms") if abs(off) >= 0.5 else "0 ms", 10,
                        "right", 0.9 if abs(off) >= 0.5 else 0.5)

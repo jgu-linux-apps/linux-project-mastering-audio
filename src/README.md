@@ -50,6 +50,8 @@ It is not another Audacity – just what you need. The interface is available in
    **Timeline** – above the tracks, Audacity-style: the backing track and every vocal as a clip with its waveform.
    Grab a clip and drag it left / right to set its offset (snaps to 10 ms, can be switched off); click the ruler to seek,
    Ctrl + wheel zooms, Shift + wheel pans, ← → move the selected clip by 1 ms (Shift: 10 ms), double-click resets it.
+   Each lane has a **volume knob** next to its name: drag it up / down, drag with the **middle mouse button** anywhere on
+   the lane, or scroll over the name (±0.5 dB); double-click the knob for 0 dB. It is the same value as the Volume slider.
    Waveforms are drawn at their real level, including the volume slider and mute. Every vocal comes out of mastering at
    the same level (−20 LUFS = slider at 0 dB); **Level all** sets every volume slider back to 0 dB.
    **Editing on the timeline** – the toolbar has **Move** (hand) and **Select** tools (or drag with Shift):
@@ -188,6 +190,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.8.4** – timeline: volume knob for every lane (drag, middle-button drag up / down, wheel over the name, double-click = 0 dB), dB value under the name.
 - **0.8.3** – timeline readable in light mode: darker waveforms and outlines, softer clip fill and selection.
 - **0.8.2** – both tabs use the full window width (no more empty side margins); option tiles in one row and vocal tracks in up to three columns on wide screens.
 - **0.8.1** – MP3 / M4A / OGG / Opus input; two merge buttons (**Merge vocals** / **Merge with beat**) with WAV or MP3 output; Space starts / stops playback anywhere in the window; up to 20 vocal tracks in the docs.
