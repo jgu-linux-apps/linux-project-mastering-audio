@@ -147,7 +147,8 @@ class Timeline(AlbumChart):
             return self.custom_h[id(obj)]
         if self.focus_mode:
             sel = getattr(self.selected, "parent", None) or self.selected
-            return max(self.base_h, 130) if obj is sel else min(self.base_h, 40)
+            # tryb „zaznaczony większy” też słucha Mała / Średnia / Duża: zaznaczony = wysokość + 50, reszta = połowa
+            return min(220, self.base_h + 50) if obj is sel else max(30, self.base_h // 2)
         return self.base_h
 
     def _row_y(self, i):

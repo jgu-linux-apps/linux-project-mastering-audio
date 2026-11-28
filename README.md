@@ -224,6 +224,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.16.1** – fix: Small / Medium / Large also work with “Selected larger” on (selected lane = size + 50 px, others = half).
 - **0.16.0** – more natural scratches (minimum-jerk hand motion, platter inertia, speed-dependent anti-aliasing instead of harsh digital artefacts, darker and quieter slow moves, light vinyl noise only while the record moves, ±5 ms human timing); transport bar with rectangular buttons (to start, play / pause, stop, to end, loop of the selection); **New project** button (Ctrl+N).
 - **0.15.1** – the window scales properly when not maximized (the toolbar scrolls and shows icons only in a narrower window); smaller option tiles; a click anywhere on a lane moves the playback cursor there, like in Audacity.
 - **0.15.0** – taller timeline lanes like in Audacity: Small / Medium / Large (default Medium, 80 px), drag a lane's bottom edge to resize it, “Selected larger” mode, Ctrl+Shift+wheel; saved in the project.
