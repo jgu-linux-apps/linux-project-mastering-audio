@@ -174,3 +174,20 @@ scale.vertical > trough > slider {
   margin: 0 -10px;
   border-radius: 4px;
 }
+
+/* ---------- transport (⏮ ▶ ■ ⏭ 🔁): prostokątne przyciski jak w Audacity ---------- */
+.transport-btn {
+  min-width: 34px;
+  min-height: 28px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+.transport-btn.transport-play {
+  background-color: alpha(#22c55e, 0.85);
+  color: #ffffff;
+}
+.transport-btn.transport-play:hover { background-color: #22c55e; }
+.transport-btn:checked {
+  background-color: alpha(@accent_bg_color, 0.85);
+  color: @accent_fg_color;
+}

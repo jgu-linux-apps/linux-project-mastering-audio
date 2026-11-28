@@ -59,8 +59,10 @@ def detect_bpm(path, lo=70.0, hi=180.0):
 
 # ------------------------------------------------------------------ synteza
 def _smooth(u):
-    """0..1 -> 0..1, start i koniec z zerową prędkością (ręka zwalnia przy zawracaniu)."""
-    return 0.5 - 0.5 * np.cos(np.pi * np.clip(u, 0, 1))
+    """0..1 -> 0..1 krzywą minimalnego szarpnięcia (minimum-jerk) – tak porusza się ludzka ręka:
+    zerowa prędkość i przyspieszenie na końcach, szybki środek ruchu."""
+    u = np.clip(u, 0, 1)
+    return u * u * u * (10 - 15 * u + 6 * u * u)
 
 
 def _motion(style, beat, fs, L_s, beats, seed):
@@ -87,7 +89,7 @@ def _motion(style, beat, fs, L_s, beats, seed):
         pos.append(np.clip(p * jitter, 0, L_s))
         gate.append(g)
     p, g = np.concatenate(pos), np.concatenate(gate)
-    ramp = max(1, int(0.003 * fs))                           # 3 ms na przełączeniu crossfadera – bez trzasków
+    ramp = max(1, int(0.004 * fs))                           # 3 ms na przełączeniu crossfadera – bez trzasków
     g = np.convolve(g, np.ones(ramp) / ramp, mode="same")
     return p, g
 
@@ -100,19 +102,7 @@ def render_scratch(sample, fs, bpm, style="mix", beats=4, seed=7, max_range=None
     beat = 60.0 / bpm
     L_s = min(len(sample) / fs, max_range if max_range else beat * 0.9)
     p, g = _motion(style, beat, fs, L_s, beats, seed)
-    v = np.abs(np.gradient(p) * fs)                          # prędkość (1 = normalnie)
-    vol = np.clip(v / 1.2, 0, 1) ** 0.6                      # wolno = ciszej, jak na winylu
-    idx = p * fs
-    t = np.arange(len(sample))
-    out = np.stack([np.interp(idx, t, sample[:, c]) for c in range(sample.shape[1])], axis=1)
-    out *= (vol * g)[:, None]
-    sos = signal.butter(2, [120, 9000], "bandpass", fs=fs, output="sos")   # charakter „z płyty”
-    out = signal.sosfilt(sos, out, axis=0)
-    peak = np.abs(out).max()
-    ref = np.abs(sample).max()
-    if peak > 0:
-        out *= min(1.5, ref / peak)                          # poziom jak oryginał
-    return out.astype(np.float32)
+    return _play(sample, fs, p, g, seed)
 
 
 # ------------------------------------------------------------------ gotowe źródła skreczu (syntetyczne)
@@ -167,7 +157,7 @@ def soften(y, fs):
 def render_preset(kind, style, bpm, beats, fs=48000):
     """Gotowy plik skreczu z presetu (źródło + styl) w tempie bitu. Zwraca ścieżkę WAV (trwały katalog)."""
     os.makedirs(OUT_DIR, exist_ok=True)
-    name = f"scratch_{kind}_{style}_{bpm:.1f}bpm_{beats}b_v2.wav"
+    name = f"scratch_{kind}_{style}_{bpm:.1f}bpm_{beats}b_v3.wav"
     out = os.path.join(OUT_DIR, name)
     if not os.path.exists(out):
         beat = 60.0 / bpm
@@ -267,8 +257,8 @@ def _move(kind, n, step_n):
         p = _smooth(u)
     elif kind == "back":
         p = 1 - _smooth(u)
-    elif kind == "baby":
-        p = np.where(u < 0.5, _smooth(u * 2), 1 - _smooth((u - 0.5) * 2))
+    elif kind == "baby":                                   # pchnięcie szybciej (45%), powrót wolniej (55%)
+        p = np.where(u < 0.45, _smooth(u / 0.45), 1 - _smooth((u - 0.45) / 0.55))
     elif kind == "chirp":                                  # do przodu otwarty, powrót zamknięty
         p = np.where(u < 0.5, _smooth(u * 2), 1 - _smooth((u - 0.5) * 2))
         g = (u < 0.5).astype(float)
@@ -304,22 +294,52 @@ def render_pattern(sample, fs, bpm, pattern, beats, seed=7, max_range=None):
             if a >= total:
                 continue
             p, g = _move(kind, n, step_n)
-            p = np.clip(p * (1 + 0.04 * rng.standard_normal()), 0, 1)
+            p = np.clip(p * (1 + 0.07 * rng.standard_normal()), 0, 1)       # zakres ruchu ręki nigdy nie jest idealny
+            a = max(0, a + int(rng.normal(0, 0.005) * fs))                  # ±5 ms – ludzkie wyczucie rytmu
             e = min(total, a + n)
             pos[a:e], gate[a:e] = p[:e - a], g[:e - a]
-    ramp = max(1, int(0.003 * fs))
+    ramp = max(1, int(0.004 * fs))
     gate = np.convolve(gate, np.ones(ramp) / ramp, mode="same")
-    return _play(sample, fs, pos * L_s, gate)
+    return _play(sample, fs, pos * L_s, gate, seed)
 
 
-def _play(sample, fs, p, g):
-    """Odczyt próbki według pozycji igły p (s) i bramki g – wspólne dla stylów i wzorców."""
-    v = np.abs(np.gradient(p) * fs)
-    vol = np.clip(v / 1.2, 0, 1) ** 0.6
+def _play(sample, fs, p, g, seed=7):
+    """Odczyt próbki jak na prawdziwym decku: pozycja igły p (s), crossfader g.
+    – bezwładność talerza i ręki: pozycja wygładzona (bez cyfrowych „kantów” na zawracaniu),
+    – antyaliasing: przy szybkim ruchu wysokie częstotliwości próbki przesuwają się w górę, więc czytamy
+      z wersji przefiltrowanej do prędkości (bez tego powstaje zgrzytliwe, „cyfrowe” skrzeczenie),
+    – winyl: wolny ruch = ciszej i ciemniej, lekki szum płyty tylko wtedy, gdy płyta się kręci."""
+    p = np.asarray(p, dtype=np.float64)
+    p = signal.sosfiltfilt(signal.butter(2, 35, fs=fs, output="sos"), p)      # bezwładność (bez fazy)
+    p = np.clip(p, 0, (len(sample) - 1) / fs)
+    v = np.abs(np.gradient(p) * fs)                          # prędkość (1 = normalne odtwarzanie)
     t = np.arange(len(sample))
-    out = np.stack([np.interp(p * fs, t, sample[:, c]) for c in range(sample.shape[1])], axis=1)
-    out *= (vol * g)[:, None]
-    out = signal.sosfilt(signal.butter(2, [120, 9000], "bandpass", fs=fs, output="sos"), out, axis=0)
+    idx = p * fs
+    speeds = [1.0, 1.7, 2.8, 4.5, 7.0]                       # pasma antyaliasingu
+    reads = []
+    for sp in speeds:
+        fc = min(0.45 * fs / sp, 0.45 * fs)
+        src = sample if sp == 1.0 else signal.sosfiltfilt(signal.butter(4, fc, fs=fs, output="sos"), sample, axis=0)
+        reads.append(np.stack([np.interp(idx, t, src[:, c]) for c in range(sample.shape[1])], axis=1))
+    lv = np.log(np.clip(v, 1.0, speeds[-1]))                 # płynne przejście między pasmami wg prędkości
+    ls = np.log(speeds)
+    out = np.zeros_like(reads[0])
+    for k in range(len(speeds)):
+        lo = ls[k - 1] if k else ls[0] - 1
+        hi = ls[k + 1] if k + 1 < len(speeds) else ls[-1] + 1
+        w = np.where(lv <= ls[k], np.clip((lv - lo) / (ls[k] - lo), 0, 1), np.clip((hi - lv) / (hi - ls[k]), 0, 1))
+        out += reads[k] * w[:, None]
+    vol = np.clip(v / 0.9, 0, 1) ** 0.7                       # wolno = ciszej (igła ledwo czyta rowek)
+    slow = signal.sosfilt(signal.butter(1, 1800, fs=fs, output="sos"), out, axis=0)
+    dark = np.clip(1 - v / 0.8, 0, 1)[:, None]                # wolny ruch = ciemniej, jak winyl
+    out = out * (1 - dark) + slow * dark
+    rng = np.random.default_rng(seed)
+    hiss = signal.sosfilt(signal.butter(2, [800, 6000], "bandpass", fs=fs, output="sos"),
+                          rng.standard_normal(len(out)))
+    crack = (rng.random(len(out)) > 0.9994) * rng.standard_normal(len(out)) * 0.6
+    noise = (hiss * 0.012 + crack * 0.02) * np.clip(v / 2, 0, 1)    # szum płyty tylko w ruchu
+    out = out * (vol * g)[:, None] + (noise * g)[:, None]
+    out = signal.sosfilt(signal.butter(2, [70, 11000], "bandpass", fs=fs, output="sos"), out, axis=0)
     peak, ref = np.abs(out).max(), np.abs(sample).max()
     if peak > 0:
         out *= min(1.5, ref / peak)

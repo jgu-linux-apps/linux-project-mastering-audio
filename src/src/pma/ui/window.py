@@ -34,6 +34,7 @@ class MainWindow(Adw.ApplicationWindow):
         hb.set_title_widget(Adw.ViewSwitcher(stack=self.views, policy=Adw.ViewSwitcherPolicy.WIDE))
         menu = Gio.Menu()
         proj = Gio.Menu()
+        proj.append(tr("project_new"), "app.project-new")
         proj.append(tr("project_open"), "app.project-open")
         proj.append(tr("project_save"), "app.project-save")
         menu.append_section(None, proj)
@@ -51,7 +52,7 @@ class MainWindow(Adw.ApplicationWindow):
         for icon, tip, cb in (("document-save-symbolic", tr("project_save") + " (Ctrl+S)",
                                lambda *_: self.save_project(self.project_path)),
                               ("folder-open-symbolic", tr("project_open") + " (Ctrl+O)", lambda *_: self.open_project()),
-                              ("edit-clear-all-symbolic", tr("project_clear"), lambda *_: self.clear_project())):
+                              ("document-new-symbolic", tr("project_new") + " (Ctrl+N)", lambda *_: self.new_project())):
             b = Gtk.Button(icon_name=icon, tooltip_text=tip)
             b.connect("clicked", cb)
             hb.pack_start(b)
@@ -94,6 +95,10 @@ class MainWindow(Adw.ApplicationWindow):
 
     def _on_key(self, _c, keyval, _code, state):
         """Spacja = start / stop odtwarzania w bieżącej zakładce (poza polami do wpisywania tekstu)."""
+        if keyval == Gdk.KEY_End and not state & Gdk.ModifierType.CONTROL_MASK and \
+                self.views.get_visible_child_name() == "vocal" and not isinstance(self.get_focus(), (Gtk.Editable, Gtk.Text)):
+            self.vocal.to_end()
+            return True
         if keyval == Gdk.KEY_Home and not state & Gdk.ModifierType.CONTROL_MASK:
             w = self.get_focus()
             while w is not None:
@@ -125,7 +130,7 @@ class MainWindow(Adw.ApplicationWindow):
                 return True
             return False
         if self.vocal.mixer.pipe:
-            self.vocal.mixer.toggle()
+            self.vocal.play_toggle()
             return True
         return False
 
@@ -263,6 +268,27 @@ class MainWindow(Adw.ApplicationWindow):
                 self.save_project(self.project_path)
         d.connect("response", resp)
         d.present(self)
+
+    def new_project(self):
+        """Nowy projekt: przy niezapisanych zmianach najpierw pyta o zapis, potem czyści obie zakładki."""
+        if self.busy:
+            self.toast(tr("project_busy"))
+            return
+        if self.has_unsaved():
+            self.ask_save_then(self._reset_project)
+        else:
+            self._reset_project()
+
+    def _reset_project(self):
+        self.vocal.clear()
+        self.album.clear()
+        self.album.set_reference(None)
+        self.vocal._undo.clear()
+        self.project_path = None
+        self.set_title(APP_NAME)
+        self.mark_saved()
+        L.log("nowy projekt", tag="project")
+        self.toast(tr("project_new_done"))
 
     def clear_project(self):
         """Nowy, pusty projekt: czyści obie zakładki (z pytaniem, bo zmiany nie są zapisywane same)."""

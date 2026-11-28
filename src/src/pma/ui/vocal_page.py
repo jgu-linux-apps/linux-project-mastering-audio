@@ -431,7 +431,7 @@ class VocalPage(Gtk.Box):
             b.add_css_class("flat")
             b.connect("clicked", lambda *_: cb())
             return b
-        self.tl_play = btn("media-playback-start-symbolic", tr("play") + " (Space)", lambda: self.mixer.toggle())
+        self.tl_play = btn("media-playback-start-symbolic", tr("play") + " (Space)", lambda: self.play_toggle())
         self.tl_play.add_css_class("circular")
         home = btn("media-skip-backward-symbolic", tr("to_start") + " (Home)", lambda: self.to_start())
         home.add_css_class("circular")
@@ -676,6 +676,21 @@ class VocalPage(Gtk.Box):
             tl.selected = new[0]
             d = max(it[2] - it[1] for it in self.clipboard)
             self.win.toast(tr("tl_paste_done", d=d, at=C.fmt_dur(at)) + (f" · {len(new)}×" if len(new) > 1 else ""))
+
+    def play_toggle(self):
+        """Play / pauza; zapamiętuje miejsce startu (Stop tam wraca, jak w Audacity)."""
+        if not self.mixer.playing:
+            self._play_from = self.mixer.position()
+        self.mixer.toggle()
+
+    def stop_play(self):
+        self.mixer.pause()
+        self.mixer.seek(getattr(self, "_play_from", 0.0), now=True)
+
+    def to_end(self):
+        d = self.mixer.duration()
+        if d > 0:
+            self.mixer.seek(max(0.0, d - 0.05), now=True)
 
     def to_start(self):
         """Powrót na początek ścieżki (przycisk ⏮ obok Play albo klawisz Home)."""
@@ -1144,24 +1159,34 @@ class VocalPage(Gtk.Box):
         for m in ("top", "bottom", "start", "end"):
             getattr(lg, f"set_margin_{m}")(8 if m in ("top", "bottom") else 18)
         row = Gtk.Box(spacing=10)
-        self.play_btn = Gtk.Button(icon_name="media-playback-start-symbolic", tooltip_text=tr("play"),
-                                   valign=Gtk.Align.CENTER)
-        self.play_btn.add_css_class("circular")
-        self.play_btn.add_css_class("suggested-action")
-        self.play_btn.connect("clicked", lambda *_: self.mixer.toggle())
+        # transport jak w Audacity: prostokątne przyciski ⏮ ▶ ■ ⏭ 🔁
+        tr_box = Gtk.Box(spacing=4, valign=Gtk.Align.CENTER)
+        tr_box.add_css_class("transport")
+
+        def tbtn(icon, tip, cb, cls=None):
+            b = Gtk.Button(icon_name=icon, tooltip_text=tip, valign=Gtk.Align.CENTER)
+            b.add_css_class("transport-btn")
+            if cls:
+                b.add_css_class(cls)
+            b.connect("clicked", lambda *_: cb())
+            tr_box.append(b)
+            return b
+        tbtn("media-skip-backward-symbolic", tr("to_start") + " (Home)", self.to_start)
+        self.play_btn = tbtn("media-playback-start-symbolic", tr("play") + " (Space)", self.play_toggle, "transport-play")
+        tbtn("media-playback-stop-symbolic", tr("stop_tip"), self.stop_play)
+        tbtn("media-skip-forward-symbolic", tr("to_end") + " (End)", self.to_end)
+        self.loop_btn = Gtk.ToggleButton(icon_name="media-playlist-repeat-symbolic", tooltip_text=tr("loop_tip"),
+                                         valign=Gtk.Align.CENTER)
+        self.loop_btn.add_css_class("transport-btn")
+        self.loop_btn.connect("toggled", lambda b: setattr(self.mixer, "loop", b.get_active()))
+        tr_box.append(self.loop_btn)
         self.pos = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, 1, 0.1)
         self.pos.set_hexpand(True)
         self.pos.set_draw_value(False)
         self._pos_h = self.pos.connect("change-value", lambda _s, _c, v: (self.mixer.seek(v), False)[1])
         self.time_lbl = Gtk.Label(label="0:00 / 0:00")
         self.time_lbl.add_css_class("numeric")
-        home = Gtk.Button(icon_name="media-skip-backward-symbolic", tooltip_text=tr("to_start") + " (Home)",
-                          valign=Gtk.Align.CENTER)
-        home.add_css_class("circular")
-        home.add_css_class("flat")
-        home.connect("clicked", lambda *_: self.to_start())
-        row.append(home)
-        row.append(self.play_btn)
+        row.append(tr_box)
         row.append(self.pos)
         row.append(self.time_lbl)
         lg.append(row)
@@ -1526,6 +1551,11 @@ class VocalPage(Gtk.Box):
             self.pos.handler_unblock(self._pos_h)
             self.time_lbl.set_text(f"{C.fmt_dur(p)} / {C.fmt_dur(d)}")
             self.timeline.set_position(p)
+            sel = self.timeline.selection
+            if self.loop_btn.get_active() and sel and self.mixer.playing and self.mixer.pending_position() is None:
+                a, b = sel[1], sel[2]                            # pętla zaznaczenia
+                if p >= b or p < a - 0.25:
+                    self.mixer.seek(a, now=True)
         if not self.mixer.playing:
             self.meter.set_value(0)
         return True

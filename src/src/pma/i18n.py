@@ -948,6 +948,22 @@ S["en"].update({
 })
 
 
+S["pl"].update({
+    'project_new': 'Nowy projekt',
+    'project_new_done': 'Nowy, pusty projekt',
+    'stop_tip': 'Stop – wraca do miejsca, z którego zacząłeś odtwarzać',
+    'to_end': 'Na koniec',
+    'loop_tip': 'Pętla: powtarza zaznaczenie (bez zaznaczenia – cały utwór)',
+})
+S["en"].update({
+    'project_new': 'New project',
+    'project_new_done': 'New, empty project',
+    'stop_tip': 'Stop – back to where playback started',
+    'to_end': 'To the end',
+    'loop_tip': 'Loop: repeats the selection (without a selection – the whole song)',
+})
+
+
 def load_settings():
     try:
         with open(CONFIG) as f:

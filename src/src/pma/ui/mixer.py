@@ -183,6 +183,10 @@ class LiveMixer:
     # ------------------------------------------------------------ bus
     def _eos(self, *_):
         def back():
+            if getattr(self, "loop", False):                 # pętla: od początku i gramy dalej
+                self.seek(0, now=True)
+                self.play()
+                return False
             self.pause()
             self.seek(0, now=True)
             return False

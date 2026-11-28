@@ -90,7 +90,8 @@ It is not another Audacity – just what you need. The interface is available in
    with Alt 1 ms); the selection shows its start, end and length in milliseconds.
    Edits work on the processed audio, keep 5 ms fades at the edges and are saved in the project.
    Vocal tracks are shown in **two columns**.
-4. **Live listening** (bar at the bottom): sliders work during playback, the meter shows the peak of the sum and warns
+4. **Live listening** (bar at the bottom): transport buttons ⏮ to start (Home) · ▶ play / pause (Space) · ■ stop (back to
+   where playback started) · ⏭ to the end (End) · 🔁 loop (repeats the selection, or the whole song without one); sliders work during playback, the meter shows the peak of the sum and warns
    when it is too loud. Seeking is safe: the jump happens when the slider stops, and if playback ever stalls the
    player rebuilds itself at the same position.
 5. **MERGE VOCALS** or **MERGE WITH BEAT** (two buttons side by side) – then choose the
@@ -172,7 +173,8 @@ file writes. It is hidden at start-up and opens only when you click the icon.
 
 Closing the app with unsaved changes asks whether to save them (Save / Don't save / Cancel).
 
-Buttons in the title bar (and menu ☰): **Save project** (Ctrl+S), **Open project…** (Ctrl+O) and **Clear project** (asks first, offers to save) – a `.pmaproj` file keeps both tabs: vocal tracks with
+Buttons in the title bar (and menu ☰): **New project** (Ctrl+N – asks to save unsaved changes), **Save project** (Ctrl+S)
+and **Open project…** (Ctrl+O) – a `.pmaproj` file keeps both tabs: vocal tracks with
 their options, volumes, effects and offsets, the backing track, MANUAL sliders, album tracks, mastering, target, method,
 output settings, cover, reference and codec. Missing files are listed and skipped. A project can also be opened from
 the command line.
@@ -222,6 +224,7 @@ live GStreamer mixer and A/B player), `tests/` (test track generators).
 
 ## Version history
 
+- **0.16.0** – more natural scratches (minimum-jerk hand motion, platter inertia, speed-dependent anti-aliasing instead of harsh digital artefacts, darker and quieter slow moves, light vinyl noise only while the record moves, ±5 ms human timing); transport bar with rectangular buttons (to start, play / pause, stop, to end, loop of the selection); **New project** button (Ctrl+N).
 - **0.15.1** – the window scales properly when not maximized (the toolbar scrolls and shows icons only in a narrower window); smaller option tiles; a click anywhere on a lane moves the playback cursor there, like in Audacity.
 - **0.15.0** – taller timeline lanes like in Audacity: Small / Medium / Large (default Medium, 80 px), drag a lane's bottom edge to resize it, “Selected larger” mode, Ctrl+Shift+wheel; saved in the project.
 - **0.14.2** – Delete removes the selection instead of silencing it: clips inside are deleted, touched clips are trimmed or split (the track itself gets silence); Cut works the same after copying; M silences; one Ctrl+Z undoes it.
